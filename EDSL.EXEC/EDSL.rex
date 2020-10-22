@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  -------------------- */
-  ver = '1.21'
+  ver = '1.22'
   /* Name:      edsl                                            |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -17,6 +17,7 @@
   | Author:    Lionel B. Dyck                                  |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.22    10/21/20 LBD - Enhance update process           |
   |    1.21    10/20/20 LBD - Correct panel logic in edslg     |
   |    1.20    10/20/20 LBD - Set MEMLIST to 9 chars and remove|
   |                           option from panel and tutorial   |
@@ -469,6 +470,7 @@ Do_SMsg:
 Do_Update:
   zcmd = null
   call pfshow 'off'           /* make sure pfshow is off */
+  do forever
   'addpop row(1) column(4)'
   'display panel(edsle)'
   drc = rc
@@ -477,6 +479,7 @@ Do_Update:
   if drc > 0 then return
   'tbput edsl'
   'tbsave edsl library(isptabl)'
+  end
   return
 
   /* ---------------------------- *
