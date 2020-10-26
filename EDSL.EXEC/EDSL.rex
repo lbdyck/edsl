@@ -1,6 +1,6 @@
-  /* --------------------  rexx procedure  -------------------- */
-  ver = '1.22'
-  /* Name:      edsl                                            |
+  /* --------------------  rexx procedure  ------------------- */
+  ver = '1.25'
+  /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
   |                                                            |
@@ -14,9 +14,15 @@
   |                                                            |
   | Dependencies: All ISPF panels are inline                   |
   |                                                            |
-  | Author:    Lionel B. Dyck                                  |
+  | Author:      Lionel B. Dyck                                |
+  | Contributor: John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.25    10/26/20 LBD - Correct PNS for Find in popup    |
+  |                         - add find string field to popup   |
+  |                         - improve find results message     |
+  |    1.24    10/23/20 JK  - Add / primary command            |
+  |    1.23    10/23/20 JK  - Change EDSLG pop-up size/location|
   |    1.22    10/21/20 LBD - Enhance update process           |
   |    1.21    10/20/20 LBD - Correct panel logic in edslg     |
   |    1.20    10/20/20 LBD - Set MEMLIST to 9 chars and remove|
@@ -163,7 +169,22 @@
     /* ---------------------------- *
     | Process any primary commands |
     * ---------------------------- */
-    if zcmd /= null then
+    TRACE
+    if zcmd /= null then do
+    Select
+      When abbrev('/',zcmd,1) = 1 then do
+        parse value '' with zcmd fstring
+        call pfshow 'off'
+        'Addpop Row(4) column(15)'
+        'Display Panel(edspo)'
+        'rempop'
+        call pfshow 'reset'
+        if zcmd = 'F' then
+           if fstring /= null
+              then zcmd = zcmd fstring
+      end
+      Otherwise nop
+    end
     Select
       When abbrev('INSERT',zcmd,1) = 1 then call do_insert '1'
       When abbrev('FIND',word(zcmd,1),1)   = 1 then call do_find
@@ -177,6 +198,7 @@
         parse value '' with options rsel zcmd
       end
       Otherwise nop
+    end
     end
     else
     /* ------------------------------- *
@@ -266,7 +288,7 @@ Do_Find:
     do
       fhit = 1
       table_top = row
-      zedsmsg = 'Found'
+      zedsmsg = null
       zedlmsg = fstring 'found in row' row
       'setmsg msg(isrz001)'
       return
@@ -387,7 +409,7 @@ Do_BEV:
 Do_Review:
   save_sgrp = edsgrp
   call pfshow 'off'           /* make sure pfshow is off */
-  'Addpop row(1) column(4)'
+  'Addpop row(1) column(40)'
   'Display Panel(edslg)'
   'Rempop'
   call pfshow 'reset'         /* restore pfshow setting */
@@ -683,6 +705,37 @@ $rsel     +@z +@edsdisp                                                 +
  &rowid = .csrrow
  vput (edsc) profile
 )End
+>Panel edspo
+)Attr Default(%+_)
+  _ type( input) intens(low ) caps(on ) just(left ) hilite(uscore)
+  + type(text) intens(low) skip(on)
+  ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
+  @ type(output) caps(off)
+)Body Window(48,8)
+%Command ===>_z
++
++]I+Insert  - insert a row into the table
++]H+History - display the change history of EDSL
++]F+Find    - find the provided string
++   Find:_fstring                 +
++
+           +Or%F3+to cancel
+)Init
+ &zwinttl = 'EDSL Primary Commands:'
+ .zvars = '(zcmd)'
+ .cursor = zcmd
+ .help = edslh
+ &I = I
+ &F = F
+ &H = H
+)Proc
+ if (&zcmd EQ F)
+    ver (&fstring,nb)
+)PNTS
+ FIELD(I)  VAR(ZCMD) VAL('I')
+ FIELD(F)  VAR(ZCMD) VAL('F')
+ FIELD(H)  VAR(ZCMD) VAL('H')
+)End
 >Panel edslo
 )Attr Default(%+_)
   _ type( input) intens(low ) caps(on ) just(left ) hilite(uscore)
@@ -803,6 +856,7 @@ $rsel     +@z +@edsdisp                                                 +
     %Insert ^(abbreviation I) to insert a row into the table
     %Find   ^(abbreviation F) to find the provided string
     %History^(abbreviation H) to display the change history of EDSL
+^   %/      ^Popup Selection menu
 ^
 %Line Commands:
 ^
@@ -814,7 +868,6 @@ $rsel     +@z +@edsdisp                                                 +
     %MD^ Move row down one             %V^  View
     %Mx^ Move row up (-#) down(+#)     %any^with Dataset only
 ^   %/^  Popup Selection menu
-^
 ^
 ^\-\Press%Enter^to continue the Tutorial\-\
 )Init
@@ -1016,6 +1069,9 @@ $rsel     +@z +@edsdisp                                                 +
         end
         c = c + 1
         interpret 'order.'c '= o'i
+        if left(dsn,1) = "'"
+           then if right(dsn,1) /= "'"
+           then dsn = translate(dsn)"'"
         order.c = order.c dsn
         order.0 = c
       end
@@ -1113,32 +1169,34 @@ $rsel     +@z +@edsdisp                                                 +
  @ type(output) caps(off) intens(low)
  + type(text  )
  _ type(input ) hilite(uscore) caps(on) intens(low)
-)Body Window(64,20) Expand(\\)
+)Body Window(45,20) Expand(\\)
 %Command ===>_zcmd
 +
 +
- +$z +>$d1                                                     +
- +$z +>$d2                                                     +
- +$z +>$d3                                                     +
- +$z +>$d4                                                     +
- +$z +>$d5                                                     +
- +$z +>$d6                                                     +
- +$z +>$d7                                                     +
- +$z +>$d8                                                     +
- +$z +>$d9                                                     +
- +$z +>$d10                                                    +
- +$z +>$d11                                                    +
- +$z +>$d12                                                    +
- +$z +>$d13                                                    +
- +$z +>$d14                                                    +
- +$z +>$d15                                                    +
- +$z +>$d16                                                    +
+ +$z +$d1                                 $z
+ +$z +$d2                                 $z
+ +$z +$d3                                 $z
+ +$z +$d4                                 $z
+ +$z +$d5                                 $z
+ +$z +$d6                                 $z
+ +$z +$d7                                 $z
+ +$z +$d8                                 $z
+ +$z +$d9                                 $z
+ +$z +$d10                                $z
+ +$z +$d11                                $z
+ +$z +$d12                                $z
+ +$z +$d13                                $z
+ +$z +$d14                                $z
+ +$z +$d15                                $z
+ +$z +$d16                                $z
 +
 )Init
 *Rexx(zwinttl edsgrp)
  zwinttl = 'EDSL Group:' edsgrp
 *EndRexx
- .zvars = '(o1 o2 o3 o4 o5 o6 o7 o8 o9 o10 o11 o12 o13 o14 o15 o16)'
+ .zvars = '(o1 sc1 o2 sc2 o3 sc3 o4 sc4 o5 sc5 o6 sc6 o7 sc7 o8 sc8 +
+            o9 sc9 o10 sc10 o11 sc11 o12 sc12 o13 sc13 o14 sc14 +
+            o15 sc15 o16 sc16)'
 *Rexx(* edsgrp d1 d2 d3 d4 d5 d6 d7 d8 o1 o2 o3 o4 o5 o6 o7 o8 edsdsn ,
        o9 o10 o11 o12 o13 o14 o15 o16 d9 d10 d11 d12 d13 d14 d15 d16)
  parse value '1 2 3 4 5 6 7 8' with o1 o2 o3 o4 o5 o6 o7 o8
@@ -1162,6 +1220,23 @@ $rsel     +@z +@edsdisp                                                 +
 *EndRexx
  .help = edsleh
 )Proc
+)FIELD
+  FIELD(d1)  LEN(55) IND(SC1,'<>')
+  FIELD(d2)  LEN(55) IND(SC2,'<>')
+  FIELD(d3)  LEN(55) IND(SC3,'<>')
+  FIELD(d4)  LEN(55) IND(SC4,'<>')
+  FIELD(d5)  LEN(55) IND(SC5,'<>')
+  FIELD(d6)  LEN(55) IND(SC6,'<>')
+  FIELD(d7)  LEN(55) IND(SC7,'<>')
+  FIELD(d8)  LEN(55) IND(SC8,'<>')
+  FIELD(d9)  LEN(55) IND(SC9,'<>')
+  FIELD(d10) LEN(55) IND(SC10,'<>')
+  FIELD(d11) LEN(55) IND(SC11,'<>')
+  FIELD(d12) LEN(55) IND(SC12,'<>')
+  FIELD(d13) LEN(55) IND(SC13,'<>')
+  FIELD(d14) LEN(55) IND(SC14,'<>')
+  FIELD(d15) LEN(55) IND(SC15,'<>')
+  FIELD(d16) LEN(55) IND(SC16,'<>')
 )End
 >Panel edsleh
 )Attr
