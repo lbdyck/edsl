@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.25'
+  ver = '1.26'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,8 @@
   | Contributor: John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.26    10/26/20 LBD - Check list of datasets and force |
+  |                           to type List if mixed format     |
   |    1.25    10/26/20 LBD - Correct PNS for Find in popup    |
   |                         - add find string field to popup   |
   |                         - improve find results message     |
@@ -434,6 +436,7 @@ Do_Insert:
   if drc > 0
   then if ztdrows = 0 then call done
   else return
+  call check_type
   'tbadd edsl'
   'tbsave edsl library(isptabl)'
   'tbsort edsl fields(edsloc,n,a)'
@@ -499,6 +502,7 @@ Do_Update:
   'rempop'
   call pfshow 'reset'         /* restore pfshow setting */
   if drc > 0 then return
+  call check_type
   'tbput edsl'
   'tbsave edsl library(isptabl)'
   end
@@ -633,6 +637,26 @@ do_view_stem:
   'lmfree dataid('id')'
   Address TSO 'free f('dd')'
   return
+
+/* ------------------------------------------------ *
+ | Confirm all the entries are the same dsorg/recfm |
+ | and if not set to type O                         |
+ * ------------------------------------------------ */
+Check_Type:
+  do cti = 1 to words(edsdsn)
+     if pos('OL',edstype) > 1 then return
+     x = listdsi(word(edsdsn,cti))
+     if cti = 1 then do
+        ctdsorg = sysdsorg
+        ctrecfm = sysrecfm
+        end
+     else do
+       if ctdsorg /= sysdsorg then edstype = 'L'
+       if ctrecfm /= sysrecfm then edstype = 'L'
+       if edstype = 'L' then return
+       end
+    end
+    return
 
 open_table:
   'tbopen edsl library(isptabl) write share'
