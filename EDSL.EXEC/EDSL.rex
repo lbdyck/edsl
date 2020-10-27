@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.26'
+  ver = '1.27'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,7 @@
   | Contributor: John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.27    10/27/20 LBD - Correct check of xxx.* entries   |
   |    1.26    10/26/20 LBD - Check list of datasets and force |
   |                           to type List if mixed format     |
   |    1.25    10/26/20 LBD - Correct PNS for Find in popup    |
@@ -645,6 +646,10 @@ do_view_stem:
 Check_Type:
   do cti = 1 to words(edsdsn)
      if pos('OL',edstype) > 1 then return
+     if pos('*',word(edsdsn,cti)) > 0 then do
+        edstype = 'L'
+        return
+        end
      x = listdsi(word(edsdsn,cti))
      if cti = 1 then do
         ctdsorg = sysdsorg
@@ -1128,6 +1133,7 @@ $rsel     +@z +@edsdisp                                                 +
          edsdsn = edsdsn dsn
          iterate
          end
+      dsn = translate(dsn)
       if pos('(',dsn) > 0
       then do
         parse value dsn with ld'('mem')'rd
@@ -1149,7 +1155,8 @@ $rsel     +@z +@edsdisp                                                 +
         edsdsn = edsdsn dsn
       end
       else do
-      if pos(left(dsn,1),"/'") = 0 then do
+      if pos(left(dsn,1),"/'") = 0 then
+        if pos('*',dsn) = 0 then do
         x = listdsi(dsn)
         if mem /= null
         then sysdsname = sysdsname'('mem')'
