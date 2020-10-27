@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.27'
+  ver = '1.28'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,7 @@
   | Contributor: John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.28    10/27/20 LBD - Fix lost dsn during update       |
   |    1.27    10/27/20 LBD - Correct check of xxx.* entries   |
   |    1.26    10/26/20 LBD - Check list of datasets and force |
   |                           to type List if mixed format     |
@@ -1140,8 +1141,6 @@ $rsel     +@z +@edsdisp                                                 +
         dsn = ld''rd
       end
       else mem = null
-      if pos('/',dsn) > 0 then
-        edsdsn = dsn
       if pos('/',dsn) = 0 then do
       if pos('*',dsn) > 0 then do
         if left(dsn,1) /= "'" then do
@@ -1152,7 +1151,6 @@ $rsel     +@z +@edsdisp                                                 +
                then dsn = pref'.'dsn
             dsn = "'"dsn"'"
             end
-        edsdsn = edsdsn dsn
       end
       else do
       if pos(left(dsn,1),"/'") = 0 then
@@ -1160,10 +1158,10 @@ $rsel     +@z +@edsdisp                                                 +
         x = listdsi(dsn)
         if mem /= null
         then sysdsname = sysdsname'('mem')'
-        edsdsn = edsdsn "'"sysdsname"'"
+        dsn = "'"sysdsname"'"
       end
-      else edsdsn = edsdsn dsn
       end
+      edsdsn = edsdsn dsn
     end
     end
     edsdsn = strip(edsdsn)
