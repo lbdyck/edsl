@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.28'
+  ver = '1.40'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -14,10 +14,37 @@
   |                                                            |
   | Dependencies: All ISPF panels are inline                   |
   |                                                            |
-  | Author:      Lionel B. Dyck                                |
-  | Contributor: John Kalinich                                 |
+  | Authors:     Lionel B. Dyck                                |
+  |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.40    11/12/20 JK  - Edit EDSHELP skeleton (Tree)     |
+  |    1.39    11/12/20 JK  - Add HEL command                  |
+  |    1.38    11/12/20 LBD - Correct exit after Set change    |
+  |    1.37    11/11/20 JK  - If SET changes view, then branch |
+  |    1.36    11/11/20 JK  - Correct dataset logic (Tree)     |
+  |                         - Update cursor select (Tree)      |
+  |    1.35    11/10/20 LBD - Fix group in tree for dataset    |
+  |                         - Change TBDISPL to TABLE in Set   |
+  |                         - Change tree TABLE to DEBUG       |
+  |                         - Add TABLE to commands in Tree    |
+  |    1.34    11/10/20 JK  - Add callable Version routine     |
+  |                         - Add SET command                  |
+  |    1.33    11/09/20 LBD - Fix add/update of OMVS file      |
+  |                         - Update version prose             |
+  |    1.32    11/08/20 JK  - Add / line command (Tree)        |
+  |                         - Add M/N line commands (Tree)     |
+  |                         - Add VERSION primary cmd (Tree)   |
+  |    1.31    11/01/20 JK  - Colorize nodes (Tree)            |
+  |                         - Add X ALL primary command (Tree) |
+  |                         - Add INSERT primary command (Tree)|
+  |                         - Add E/V/B/S line commands (Tree) |
+  |                         - Add O/I/U/D line commands (Tree) |
+  |                         - Add X toggle line command (Tree) |
+  |                         - Cursor position S line cmd (Tree)|
+  |    1.30    10/27/20 LBD - Add TREE to / Primary popup menu |
+  |                         - right justify rows in tree       |
+  |    1.29    10/27/20 JK  - Add TREE primary command         |
   |    1.28    10/27/20 LBD - Fix lost dsn during update       |
   |    1.27    10/27/20 LBD - Correct check of xxx.* entries   |
   |    1.26    10/26/20 LBD - Check list of datasets and force |
@@ -117,7 +144,7 @@
   if options = 'DEBUG' then do
     trace '?i'
     options = null
-  end
+    end
 
   /* ---------------------------- *
   | Open the data set list table |
@@ -142,6 +169,12 @@
   /* ----------------------- *
   | Display Selection Table |
   * ----------------------- */
+  'vget (edsinit)'
+  if edsinit = 'TREE' then do        /* Dynamic--display tree format  */
+    listit = 0
+    call do_tree
+    if listit = 0 then call done
+    end
   table_top = 1
   ztdsels = 0
   do forever
@@ -173,7 +206,6 @@
     /* ---------------------------- *
     | Process any primary commands |
     * ---------------------------- */
-    TRACE
     if zcmd /= null then do
     Select
       When abbrev('/',zcmd,1) = 1 then do
@@ -192,6 +224,20 @@
     Select
       When abbrev('INSERT',zcmd,1) = 1 then call do_insert '1'
       When abbrev('FIND',word(zcmd,1),1)   = 1 then call do_find
+      When abbrev('TREE',word(zcmd,1),1)   = 1 then call do_tree
+      When abbrev('SET',word(zcmd,1),1)   = 1 then do
+        'vget (edsinit)'
+        save_init = edsinit
+        call do_settings
+        if edsinit = 'TREE' &,
+           save_init <> edsinit then do
+          listit = 0
+          call do_tree
+          call done
+          end
+        end
+      When abbrev('VERSION',word(zcmd,1),1) = 1 then call do_version
+      When abbrev("HEL",word(zcmd,1),3) = 1 then call do_help
       When abbrev("HISTORY",word(zcmd,1),1) = 1 then do
         zcmd = ''
         call do_history
@@ -646,7 +692,7 @@ do_view_stem:
  * ------------------------------------------------ */
 Check_Type:
   do cti = 1 to words(edsdsn)
-     if pos('OL',edstype) > 1 then return
+     if pos(edstype,'OL') > 0 then return
      if pos('*',word(edsdsn,cti)) > 0 then do
         edstype = 'L'
         return
@@ -701,21 +747,583 @@ pfshow:
     'select pgm(ispopf) parm(FKA,OFF)'
   end
   return
+  /* --------------------------------- *
+  | Dynamic Tree routine              |
+  * --------------------------------- */
+Do_Tree:
+  zcmd  = ''
+  rsel  = ''
+  edsxgrp = ''                              /* Excluded groups        */
 
+Tree_Exclude:
+  xgrp   = 'OFF'
+  red    = '01'x                            /* Assign colors to       */
+  blue   = '02'x                            /*     Attribute bytes    */
+  green  = '03'x                            /*     found in the data  */
+  white  = '04'x
+  turq   = '05'x
+  pink   = '06'x
+  yellow = '07'x
+  sel    = '10'x                            /* . line command pad     */
+  selx   = '11'x                            /* + line command pad     */
+  selh   = '12'x                            /*   line command pad     */
+  dyndata  = ''                             /* initialize data        */
+  shadata  = ''                             /* initialize shadow var  */
+  maxlines = 0
+
+  Address ISPExec
+  'tbtop edsl'
+  'tbskip edsl'
+  ttn = 1
+  all_groups  = ''
+  do forever                                       /* Build dynamic   */
+    'tbget edsl'                                   /*   area          */
+    tree_tbl.ttn = 'edstype='left(edstype,1)  'edsgrp='left(edsgrp,24),
+                    'edsdsn='edsdsn  'edsloc='edsloc
+    lineno = right(ttn,5,'0')
+    ttn = ttn + 1
+    do
+      if edstype = 'D' then
+        edsgrp = left(edsdisp,24)||'09'x||lineno
+      group = edsgrp
+      all_groups = all_groups left(group,24)       /* Build list of   */
+                                                   /*   groups        */
+      color = blue                                 /* Group           */
+      if edstype = 'D' then                        /* DSNAME          */
+        color = pink
+      if edstype = 'O' then                        /* OMVS            */
+        color = yellow
+      if edstype = 'L' then                        /* DSList          */
+        color = green
+
+      if pos(left(edsgrp,24),edsxgrp) > 0 then do  /* Excluded?       */
+        if edstype = '' then
+          y = selh||' '||white||group              /* Section header  */
+        else
+          y = selx||' '||color||group              /* +=Excluded      */
+        end
+      else
+        if edstype = '' then
+          y = selh||' '||white||group              /* Section header  */
+        else
+          y = sel||' '||color||group
+
+      dyndata=dyndata||left(y,80)
+      maxlines = maxlines + 1
+
+      do num = 1 to 16
+        if pos(left(edsgrp,24),edsxgrp) > 0 then
+          leave
+        if word(edsdsn,num) <> '' then do
+          y = ' '||' '||turq||'   ' word(edsdsn,num)
+          dyndata=dyndata||left(y,80)
+          maxlines = maxlines + 1
+        end
+      end
+    end
+    'tbskip edsl'
+    if rc > 0 then do
+      tree_tbl.0 = ttn - 1
+      leave
+      end
+  end
+  dyndata = dyndata||,                     /* mark bottom             */
+            white||centre(' Bottom of data ',79,'*')
+  usrrfind = 'PASSTHRU'                    /* RFIND                   */
+  'vput (usrrfind)'
+
+/* ------------------------------------------------------------------ */
+/* Doug Nadel scrolling code; ISPF Panels Beyond the Basics, Mar 2000 */
+/* ------------------------------------------------------------------ */
+Doug:
+  dynarea  = ''                            /* initialize data         */
+  dynshad  = ''                            /* initialize shadow var   */
+  curline  = 1                             /* set current line #      */
+  Address ISPExec
+  'vget (zscreend)'                        /* get screen depth        */
+  ht = zscreend                            /* screen height           */
+do until disprc > 0
+  dynarea = substr(dyndata,1+(curline-1)*80,ht*80) /* set dynamic var */
+  dynshad = ''                                     /* set shadow  var */
+  'display panel(edsdyn)'                  /* display the data        */
+  disprc = rc                              /* save return code        */
+  'vget (zverb,zscrolla,zscrolln)'         /* get scroll values       */
+  select                                   /* process scrolling       */
+    when(zverb = 'UP')   then              /* scroll up               */
+     if zscrolla = 'MAX' then              /*  if scroll was max      */
+      curline = 1                          /*     scroll to top       */
+     else                                  /*  else a number is known */
+      curline = max(1,curline-zscrolln);   /* (maximum is top)        */
+    when(zverb = 'DOWN') then              /* scroll down             */
+     if zscrolla = 'MAX' then              /*  if scroll was max      */
+      curline = maxlines                   /*     scroll to bottom    */
+     else                                  /*  else a number is known */
+      curline = min(maxlines,curline+zscrolln)  /* (max is bottom)    */
+    otherwise                       /* could use left & right too     */
+  end
+/* ------------------------------------------------------------------ */
+/* Doug Nadel scrolling code; end                                     */
+/* ------------------------------------------------------------------ */
+/* --------------------------------- *
+ | Cursor Select line command        |
+ * --------------------------------- */
+Cursor_Pos_Select:
+  if datatype(cpos,'N') = 1 then do
+    if cname = 'DYNAREA' &,                        /* Dynamic area    */
+       (cpos // 80) = 2  &,                        /* Column 2        */
+       substr(dynarea,cpos,1)   <> '*' &,          /* ^Bottom of data */
+       substr(dynarea,cpos+2,4) <> ' ' then        /* ^DSN's          */
+         dynarea = substr(dynarea,1,cpos-1)||'S'||,
+                   substr(dynarea,cpos+1,length(dynarea))
+    end
+/* --------------------------------- *
+ | Tree primary commands             |
+ * --------------------------------- */
+  zcmd_lower = zcmd
+  zcmd = translate(zcmd)
+  select
+  When abbrev('TABLE',zcmd,1) = 1 then do
+    listit = 1
+    return
+    end
+  When abbrev('SET',word(zcmd,1),1)   = 1 then do
+       'vget (edsinit)'
+       save_init = edsinit
+       call do_settings
+       if edsinit = 'TABLE' &,
+          save_init <> edsinit then do
+         listit = 1
+         return
+         end
+       end
+  when abbrev("FIND",word(zcmd,1),1) = 1 then do
+    findstr = strip(word(zcmd,2),,"'")
+    findstr_lower = strip(word(zcmd_lower,2),,"'")
+    zcmd = ''
+    call tree_find
+    end
+  when abbrev("RFIND",word(zcmd,1),2) = 1 then do
+    if curline = maxlines then
+      curline = 0
+    curline = curline + 1
+    zcmd = ''
+    call tree_find
+    end
+  when abbrev("REFRESH",word(zcmd,1),3) = 1 then do
+    zcmd = ''
+    signal do_tree
+    end
+  when word(zcmd,1) = 'X' & word(zcmd,2) = 'ALL' then do
+    zcmd = ''
+    edsxgrp = all_groups
+    signal tree_exclude
+    end
+  when abbrev("INSERT",word(zcmd,1),1) = 1 then do
+    zcmd = ''
+    call do_insert '1'
+    signal do_tree
+    end
+  when abbrev("DEBUG",word(zcmd,1),1) = 1 then do
+    zcmd = ''
+    do x = 1 to tree_tbl.0
+      say tree_tbl.x
+      end
+    end
+  when abbrev("HEL",word(zcmd,1),3) = 1 then call do_help
+  when abbrev("VERSION",word(zcmd,1),1) = 1 then call do_version
+  otherwise nop
+  end
+/* --------------------------------- *
+ | Tree line commands                |
+ * --------------------------------- */
+  do line = 1 to ht-3
+    grp = substr(dynarea,4+(line-1)*80,24)
+    dsngrp = substr(dynarea,4+(line-1)*80,30)
+    /* Popup line commands */
+    if substr(dynarea,2+(line-1)*80,1) = '/' then do
+      if substr(dynarea,3+(line-1)*80,1) = '04'x then     /* Header   */
+         leave
+      edsdisp = left(grp,24)
+      call pfshow 'off'
+      'Addpop Row(4) column(15)'
+      if edstype /= null then
+        'Display Panel(edsdyno)'
+      else
+        'Display Panel(edslos)'
+      'rempop'
+      call pfshow 'reset'
+      slash = zcmd
+      if slash = 'R' then
+        slash = ' '
+      dynarea = substr(dynarea,1,1+(line-1)*80,1)||slash||,
+                substr(dynarea,3+(line-1)*80,length(dynarea))
+      zcmd = null
+      end
+    select
+    /* Exclude - toggle */
+    when substr(dynarea,2+(line-1)*80,1) = 'X' then do
+      if substr(dynarea,3+(line-1)*80,1) = '04'x then     /* Header   */
+         leave
+      sel_pos = pos(grp,edsxgrp)
+      if sel_pos > 0 then
+        edsxgrp = delstr(edsxgrp,sel_pos,24)
+      else
+        edsxgrp = edsxgrp left(grp,24)
+      xgrp = 'ON'
+      end
+    /* Edit ,View, Browse, Library, OpenDSL */
+    when substr(dynarea,2+(line-1)*80,1) = 'E' |,
+         substr(dynarea,2+(line-1)*80,1) = 'V' |,
+         substr(dynarea,2+(line-1)*80,1) = 'B' |,
+         substr(dynarea,2+(line-1)*80,1) = 'S' then do
+      if substr(dynarea,3+(line-1)*80,1) = '04'x then     /* Header   */
+         leave
+      if substr(dynarea,3+(line-1)*80,1) = '06'x then do  /* DSN  */
+        rsel = substr(dynarea,2+(line-1)*80,1)
+        edsdsn = left(grp,24)
+        edstype = 'D'
+        edsgrp = ''
+        end
+      else                                          /* Group, DSLIST  */
+        do
+          rsel = substr(dynarea,2+(line-1)*80,1)
+          edsgrp = left(grp,24)
+          'tbtop edsl'
+          'tbscan edsl arglist(edsgrp)'
+          end
+      call do_BEV
+      rsel = ''
+      end
+    /* Insert, Delete, OpenDSL, Move Up, Move Dn, Update */
+    when substr(dynarea,2+(line-1)*80,1) = 'I' |,
+         substr(dynarea,2+(line-1)*80,1) = 'D' |,
+         substr(dynarea,2+(line-1)*80,1) = 'O' |,
+         substr(dynarea,2+(line-1)*80,1) = 'M' |,
+         substr(dynarea,2+(line-1)*80,1) = 'N' |,
+         substr(dynarea,2+(line-1)*80,1) = 'U' then do
+      if substr(dynarea,3+(line-1)*80,1) = '04'x then     /* Header   */
+        leave
+      if substr(dynarea,3+(line-1)*80,1) = '06'x then do  /* DSN  */
+        rsel = substr(dynarea,2+(line-1)*80,1)
+        skipnum = substr(dsngrp,26,5)          /* Non-display row num */
+        'tbtop edsl'
+        'tbskip edsl number('skipnum')'
+        edsdsn = left(grp,24)
+        edsgrp = left(grp,24)
+        end
+      else                                          /* Group, DSLIST  */
+        do
+          rsel = substr(dynarea,2+(line-1)*80,1)
+          edsgrp = left(grp,24)
+          'tbtop edsl'
+          'tbscan edsl arglist(edsgrp)'
+        end
+      if pos(rsel,'D') > 0 then do
+        zwinttl = 'Confirm Request'
+        ckey    = ''
+        do until (ckey = 'PF03') | (ckey = 'ENTER')
+          'control nocmd'
+          'addpop'
+          'display panel(edsdync)'
+          'rempop'
+          end
+        if ckey = 'PF03' then do
+          rsel = ''
+          leave
+          end
+        'tbdelete edsl'
+        signal do_tree
+        end
+      if pos(rsel,'I') > 0 then do
+        call do_insert
+        signal do_tree
+        end
+      if pos(rsel,'M') > 0 then do
+        rsel = 'M-1'
+        call do_MoveRow
+        signal do_tree
+        end
+      if pos(rsel,'N') > 0 then do
+        rsel = 'M1'
+        call do_MoveRow
+        signal do_tree
+        end
+      if pos(rsel,'O') > 0 then do
+        call do_OpenDSL
+        end
+      if pos(rsel,'U') > 0 then do
+        call do_update
+        signal do_tree
+        end
+      rsel = ''
+      end
+    otherwise
+    end
+  end
+  if xgrp = 'ON' then
+    signal tree_exclude
+end
+return
+/* --------------------------------- *
+ | Tree find group with matching     |
+ * --------------------------------- */
+Tree_Find:
+  do x = curline to maxlines
+    line = substr(dyndata,1+(x-1)*80,80)
+    if pos(findstr,line) > 0 |,
+       pos(findstr_lower,line) > 0 then do
+      zerrsm = "CHARS '"findstr"' found"
+      zerrlm = "Search for CHARS '"findstr"' was successful."
+      zerrhm = 'edslh'
+      zerralrm = 'NO'
+      Address ISPExec 'setmsg msg(isrz002)'
+      curline = x
+      leave x
+      return
+      end
+  end
+  curline = x
+  if curline > maxlines then do
+    curline = maxlines
+    zerrsm = '*Bottom of list reached*'
+    zerrlm = "CHARS '"findstr"' not found. Press RFIND key to",
+             "continue the search from the top of the group list."
+    zerrhm   = 'edslh'
+    zerralrm = 'NO'
+    Address ISPExec 'setmsg msg(isrz002)'
+    end
+  return
+/* --------------------------------- *
+ | Display EDSL® version info        |
+ * --------------------------------- */
+Do_Version:
+    zcmd = ''
+    zerrsm = ''
+    zerrlm = left('EDSL® '||ver,73),
+             left('Lionel Dyck and John Kalinich',73),
+             left('The ISPF Cabal - Vive la révolution',73),
+             left('Copyleft - GNU GPL v3',73)
+    zerralrm = 'NO'
+    zerrhm = 'edsdlh'
+    Address ISPExec
+    'setmsg msg(isrz002)'
+    return
+/* --------------------------------- *
+ | Display EDSL® settings            |
+ * --------------------------------- */
+Do_Settings:
+    zcmd = ''
+    Address ISPExec
+    'Addpop Row(4) column(15)'
+    'Display Panel(edsset)'
+    'rempop'
+    return
+/* --------------------------------- *
+ | Display EDSL® help member         |
+ * --------------------------------- */
+Do_Help:
+    findcmd  = word(zcmd,2)
+    zcmd = ''
+    parse var load_info . . . . skeldd .
+    Address ISPExec
+    "lminit dataid(skel) ddname("skeldd")"
+    "view dataid("skel") member(edshelp)",
+      "macro(edsfhelp) parm(findcmd)"
+    "lmfree dataid("skel")"
+    return
 /* start of inline elements
 >Start
+>Panel edsdyn
+)ATTR
+  ¦ TYPE(INPUT) INTENS(HIGH) CAPS(OFF) COLOR(RED)
+  @ AREA(DYNAMIC)            SCROLL(ON) EXTEND(ON)
+  01 TYPE(DATAOUT)           COLOR(RED)
+  02 TYPE(DATAOUT)           COLOR(BLUE)
+  03 TYPE(DATAOUT)           COLOR(GREEN)
+  04 TYPE(DATAOUT)           COLOR(WHITE)
+  05 TYPE(DATAOUT)           COLOR(TURQ)
+  06 TYPE(DATAOUT)           COLOR(PINK)
+  07 TYPE(DATAOUT)           COLOR(YELLOW)
+  09 TYPE(DATAOUT)           INTENS(NON)
+  10 TYPE(DATAIN) CAPS(ON) PAD('.') PAS(ON) COLOR(RED)
+  11 TYPE(DATAIN) CAPS(ON) PAD('+') PAS(ON) COLOR(RED)
+  12 TYPE(DATAIN) CAPS(ON) PAD(' ') PAS(ON) COLOR(RED)
+  r  TYPE(CHAR) COLOR(RED)   HILITE(REVERSE)
+  g  TYPE(CHAR) COLOR(GREEN) HILITE(REVERSE)
+  b  TYPE(CHAR) COLOR(BLUE)  HILITE(REVERSE)
+  $  TYPE(TEXT)              COLOR(YELLOW)
+  #  TYPE(TEXT)              COLOR(TURQ)
+  [  TYPE(output)            COLOR(TURQ) just(right) caps(off)
+  ~  TYPE(OUTPUT)            COLOR(TURQ)
+  ?  TYPE(OUTPUT) PAS(ON)    COLOR(YELLOW) CAPS(OFF) HILITE(USCORE)
+  !  TYPE(PS)
+)BODY EXPAND(\\)
+%EDSL®+                      $Tree Display              [rowline
+%Command ===>¦zcmd                                            %Scroll ===>_Z   +
++
+@dynarea,dynshad                                                               @
+)INIT
+.zvars = '(zscml)'
+*REXX(* rowline curline maxlines)
+rowline = 'Row' curline 'of' maxlines
+*Endrexx
+.help  = 'edsdynh'
+if (&zscml = ' ') &zscml = 'CSR'
+)PROC
+vput (zscml) profile
+&cpos = .CSRPOS
+&cname = .CURSOR
+)END
+>Panel edsdynh
+)Attr Default(%^_)
+ @ type(output) caps(off) intens(low) color(turq)
+ ~ type(text) caps(off) intens(low) color(yellow)
+ ` type(text) caps(off) intens(low) color(blue)
+ ] type(text) caps(off) intens(low) color(green)
+ [ type(text) caps(off) intens(low) color(pink)
+ $ type(input ) hilite(uscore) caps(on) intens(low)
+ _ type(input ) hilite(uscore) caps(on) intens(low) intens(low)
+   color(red)
+)Body Expand(\\)
+^Tutorial\-\%Enhanced Data Set List^\-\Tutorial
+%Command ===>_zcmd
+^
+%Node Colors:  `Group   ~OMVS   ]DSList   [DSName
+^
+%Primary Commands:
+^
+    %Find   ^to find the provided string
+    %RFind  ^to repeat find of the provided string
+    %REFresh^to refresh the group tree display
+    %X ALL  ^to exclude all group tree nodes
+    %Insert ^to insert a row into the table
+    %Table  ^to switch to ISPF table view
+    %Set    ^to display the settings window
+    %HEL cmd^to display EDSL® help member
+^
+%Line Commands:
+^
+    %B^  Browse     %M^  Move up       %O^  Open in Dataset List
+    %D^  Delete     %N^  Move down     %S^  Library utility
+    %E^  Edit       %U^  Update        %.^  Cursor select (S)
+    %I^  Insert     %V^  View          %X^  Exclude tree node (toggle)
+    %/^  Popup menu
+)Init
+)Proc
+ &zcont = edsdynh
+)End
+>Panel edsdync
+)attr default(%+_)
+   $  type(output)  intens(low)  caps(off)  color(turq)  just(left)
+   _  type(input)   intens(high) caps(on)   just(left)   hilite(uscore)
+   +  type(text)    intens(low)  skip(on)   color(green)
+)body window(50,6)
++
+%Confirm delete of Group:$edsgrp
++
++Are you sure?
++
++Press%ENTER+to process or%END+to exit
+)PROC
+  &ckey = .pfkey
+  if (&ckey = ' ')
+      &ckey = 'ENTER'
+  vput (ckey) shared
+)end
+>Panel edsdyno
+)Attr Default(%+_)
+  _ type( input) intens(low ) caps(on ) just(left ) hilite(uscore)
+  + type(text) intens(low) skip(on)
+  ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
+  @ type(output) caps(off)
+)Body Window(39,11)
++Enter Selection:_z+
++
++ Group:@edsdisp
++
++]B+Browse            +]O+Open DSL/UDL
++]D+Delete group      +]S+Select (Open)
++]E+Edit              +]U+Update
++]I+Insert            +]V+View
++]M+Move up           +]X+Exclude
++]N+Move dn
+           +Or%F3+to cancel
+)Init
+ &zwinttl = 'EDSL Selection Options:'
+ .zvars = '(zcmd)'
+ .cursor = zcmd
+ .help = edslh
+ &B = B
+ &D = D
+ &E = E
+ &I = I
+ &M = M
+ &N = N
+ &O = O
+ &S = S
+ &U = U
+ &V = V
+ &X = X
+)Proc
+)PNTS
+ FIELD(B)  VAR(ZCMD) VAL('B')
+ FIELD(D)  VAR(ZCMD) VAL('D')
+ FIELD(E)  VAR(ZCMD) VAL('E')
+ FIELD(I)  VAR(ZCMD) VAL('I')
+ FIELD(M)  VAR(ZCMD) VAL('M')
+ FIELD(N)  VAR(ZCMD) VAL('N')
+ FIELD(O)  VAR(ZCMD) VAL('O')
+ FIELD(S)  VAR(ZCMD) VAL('S')
+ FIELD(U)  VAR(ZCMD) VAL('U')
+ FIELD(V)  VAR(ZCMD) VAL('V')
+ FIELD(X)  VAR(ZCMD) VAL('X')
+)End
+>Panel edsset
+)Attr Default(%+_)
+  _ type( input) intens(low ) caps(on ) just(left ) hilite(uscore)
+  + type(text) intens(low) skip(on)
+  ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
+  @ type(output) caps(off)
+)Body Window(42,5)
+%Command ===>_z
++
+%Display view ===>_edsinit+(TABLE or TREE)
++
+)Init
+ &zwinttl = 'EDSL Settings:'
+ .zvars = '(zcmd)'
+ .cursor = edsinit
+ .help = edslh
+ if (&edsinit = '')
+   &edsinit = 'TABLE'
+)Proc
+*REXX(*)
+ if abbrev('TABLE',edsinit,2) = 1 then edsinit = 'TABLE'
+ if abbrev('TREE',edsinit,2)  = 1 then edsinit = 'TREE'
+*ENDREXX
+ ver (&edsinit,nb,list,TABLE,TREE)
+ vput (edsinit) profile
+)End
+>Exec edsfhelp
+/* rexx */
+ISREdit 'macro (arg)'
+ISREdit 'reset'
+if arg = '' then
+  nop
+else
+  ISREdit 'find <'arg
 >Panel edsl
 )Attr
  @ type(output) caps(off) intens(low) color(turq)
  $ type(input ) hilite(uscore) caps(on) intens(low)
  _ type(input ) hilite(uscore) caps(on) intens(low)
 )Body Expand(\\)
-+\-\%Enhanced Data Set List+@ver +\-\
+%EDSL®+\-\%Enhanced Data Set List+@ver +\-\
 %Command ===>_zcmd                \ \%Scroll ===>_edsc+
 +
-%Select     T   Dataset/Group
+%Select     Type   Dataset/Group
 )Model
-$rsel     +@z +@edsdisp                                                 +
+$rsel     +  @z + @edsdisp                                              +
 )Init
  .cursor = &zcmd
  .help = edslh
@@ -741,11 +1349,14 @@ $rsel     +@z +@edsdisp                                                 +
   + type(text) intens(low) skip(on)
   ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
   @ type(output) caps(off)
-)Body Window(48,8)
+)Body Window(48,11)
 %Command ===>_z
 +
 +]I+Insert  - insert a row into the table
 +]H+History - display the change history of EDSL
++]S+Set     - display the settings window
++]T+Tree    - display a tree view of the table
++]V+Version - display EDSL® version number
 +]F+Find    - find the provided string
 +   Find:_fstring                 +
 +
@@ -758,6 +1369,9 @@ $rsel     +@z +@edsdisp                                                 +
  &I = I
  &F = F
  &H = H
+ &S = S
+ &T = T
+ &V = V
 )Proc
  if (&zcmd EQ F)
     ver (&fstring,nb)
@@ -765,6 +1379,9 @@ $rsel     +@z +@edsdisp                                                 +
  FIELD(I)  VAR(ZCMD) VAL('I')
  FIELD(F)  VAR(ZCMD) VAL('F')
  FIELD(H)  VAR(ZCMD) VAL('H')
+ FIELD(S)  VAR(ZCMD) VAL('S')
+ FIELD(T)  VAR(ZCMD) VAL('T')
+ FIELD(V)  VAR(ZCMD) VAL('V')
 )End
 >Panel edslo
 )Attr Default(%+_)
@@ -855,12 +1472,12 @@ $rsel     +@z +@edsdisp                                                 +
     %*+groups of datasets               (DSList or Browse/Edit/View)
     %*+OMVS directory                   (UDList)
 +
-+Panel Fields:%Select+  Row selection field
++Panel Fields:%Select+       Row selection field
 +
-+             %T+       Row type:  %D+Dataset
-+                                  %G+Group
-+                                  %L+DSList
-+                                  %O+OMVS
++             %Type+         Row type:  %D+Dataset
++                                       %G+Group
++                                       %L+DSList
++                                       %O+OMVS
 +
 +             %Dataset/Group+Dataset name, Group name, OMVS Directory/File
 +
@@ -881,23 +1498,23 @@ $rsel     +@z +@edsdisp                                                 +
 ^Tutorial\-\%Enhanced Data Set List^\-\Tutorial
 %Command ===>_zcmd
 ^
-%Primary Commands:
+%Primary Commands: %Insert ^(abbreviation I) insert a row into the table
+                   %Find   ^(abbreviation F) find the provided string
+                   %HEL cmd^(abbr HEL)       display EDSL® help for a cmd
+                   %History^(abbreviation H) display change history of EDSL
+                   %Set    ^(abbreviation S) display the settings window
+                   %Tree   ^(abbreviation T) display the group tree view
+                   %Version^(abbreviation V) display EDSL® version number
+                   %/      ^Popup Selection menu
 ^
-    %Insert ^(abbreviation I) to insert a row into the table
-    %Find   ^(abbreviation F) to find the provided string
-    %History^(abbreviation H) to display the change history of EDSL
-^   %/      ^Popup Selection menu
-^
-%Line Commands:
-^
-    %B^  Browse                        %O^  Open in Dataset List
-    %D^  Delete to delete a row        %R^  To display the group
-    %E^  Edit                          %R^  To review (display)
-    %I^  Insert a row                  %S^  Select
-    %M^  Move row up one               %U^  Update (alias C)
-    %MD^ Move row down one             %V^  View
-    %Mx^ Move row up (-#) down(+#)     %any^with Dataset only
-^   %/^  Popup Selection menu
+%Line Commands:    %B^  Browse                      %O^  Open in Dataset List
+                   %D^  Delete to delete a row      %R^  To display the group
+                   %E^  Edit                        %R^  To review (display)
+                   %I^  Insert a row                %S^  Select
+                   %M^  Move row up one             %U^  Update (alias C)
+                   %MD^ Move row down one           %V^  View
+                   %Mx^ Move row up (-#) down(+#)   %any^with Dataset only
+                   %/^  Popup Selection menu
 ^
 ^\-\Press%Enter^to continue the Tutorial\-\
 )Init
@@ -926,7 +1543,7 @@ $rsel     +@z +@edsdisp                                                 +
 +       %O+      UDList
 %    TSO EDSL sel group
 +      - open the group using the sel option (e.g. E)
-%    TSO EDSL sel  group member+(or member mask)
+%    TSO EDSL sel group member+(or member mask)
 +      - open the group using the sel option (e.g. E)
 +
 +    If EDSL has been added to the ISPF Commands table then eliminate the TSO
@@ -1130,9 +1747,9 @@ $rsel     +@z +@edsdisp                                                 +
     end
     do i = 1 to c
       dsn = word(order.i,2)
-      if pos("'/",left(dsn,1)) > 0 then do
-         edsdsn = edsdsn dsn
-         iterate
+      if pos("/",dsn) > 0 then do
+         edsdsn = strip(dsn)
+         return
          end
       dsn = translate(dsn)
       if pos('(',dsn) > 0
@@ -1153,7 +1770,7 @@ $rsel     +@z +@edsdisp                                                 +
             end
       end
       else do
-      if pos(left(dsn,1),"/'") = 0 then
+      if pos("/",dsn) = 0 then
         if pos('*',dsn) = 0 then do
         x = listdsi(dsn)
         if mem /= null
@@ -1299,6 +1916,298 @@ $rsel     +@z +@edsdisp                                                 +
 )Proc
  &zcont = edsleh
 )End
+>Skel edshelp
+ Function:
+ The EDSL exec invokes the Extended Data Set List Dialog.
+
+ ---
+ Copyleft (C) 2020, Lionel Dyck and Janko Kalinic
+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+   http://www.gnu.org/licenses/
+
+ Syntax:
+
+   %EDSL
+         Open the EDSL list of groups
+   %EDSL group
+         open the specified group using the default selection option
+         Type    selection option
+         D       Member List
+         G       Member List
+         L       DSList
+         O       UDList
+   %EDSL sel group
+         open the group using the sel option (e.g. E)
+   %EDSL sel group member (or member mask)
+         open the group using the sel option (e.g. E)
+
+ Aliases  - none.
+ Required - none.
+
+Operands:
+  group        - open the specified group using the default selection
+                 option.
+  sel          - selection option
+                 (E=Edit, B=Browse, V=View, O=DSList/UDList)
+  member       - member name or mask.
+
+<COMMANDS>
+    Find    - Find the provided string
+    HEL cmd - Display EDSL help for a cmd
+    History - Display modification history          (Table)
+    Insert  - Insert a row into the table
+    REFresh - Refresh the group tree display        (Tree)
+    RFind   - Repeat find of the provided string    (Tree)
+    Set     - Display the settings window
+    Table   - Switch to ISPF table view             (Tree)
+    Tree    - Display the group tree view           (Table)
+    Version - Display EDSL® version number
+    X ALL   - Exclude all group tree nodes          (Tree)
+    /       - Popup selection menu                  (Table)
+
+<LINECMDS>
+
+  B   -  Browse
+  D   -  Delete to delete a row
+  E   -  Edit
+  I   -  Insert a row
+  M   -  Move row up one
+  MD  -  Move row down one                 (Table)
+  Mx  -  Move row up (-#) down(+#)         (Table)
+  N   -  Move row down one                 (Tree)
+  /   -  Popup Selection menu
+  O   -  Open in Dataset List
+  R   -  To display the group              (Table)
+  S   -  Select
+  .   -  Cursor select (S)                 (Tree)
+  U   -  Update (alias C)
+  V   -  View
+  X   -  Exclude tree node (toggle)        (Tree)
+  any -  (with Dataset only)               (Table)
+
+ Syntax: line command
+
+<FIND>
+ Function:
+
+ Find will find the value in the display.
+
+ Syntax: Find value
+
+<RFIND>
+ Function:
+
+ Repeat Find will find the next value in the display.
+
+ The ISPF command table must have a user controlled variable for RFIND
+ in order for this to work properly.
+
+    Verb      T  Action
+                    Description
+    RFIND     0  &USRRFIND
+                    User controlled variable for RFIND
+    RFIND     0  SETVERB
+                    REPEAT FIND
+
+ If you can not update the installation ISPF command table, here is
+ a rexx solution you can add to EDSL early on in the exec.
+
+    zctverb  = "RFIND"
+    zcttrunc = 0
+    zctact   = "&USRRFIND"
+    zctdesc  = "User controlled variable for RFIND"
+    'vget (zsctpref)'
+    ctab = zsctpref'cmds'
+    'tbtop' ctab
+    'tbsarg' ctab
+    'tbscan' ctab 'arglist(zctdesc) condlist(EQ) Next'
+    if rc > 0 then 'tbadd' ctab
+    usrrfind = null
+    'vput (usrrfind)'
+
+ Syntax: RFind
+
+<REFRESH>
+ Function:
+
+ REFresh will refresh the Tree Display by reading the EDSL ISPF
+ table.
+
+<SET>
+ Function:
+
+ Set will display the settings pop-up and allow you to change the
+ display view (TABLE or TREE).
+
+ Syntax: Set
+
+<INSERT>
+ Function:
+
+ Insert will insert a row into the table
+
+ Syntax: Insert
+
+<TREE>
+ Function:
+
+ Tree will display the the group tree view when in Table display.
+
+ Node Colors:   Group=blue  OMVS=yellow  DSList=green  DSName=pink
+
+  .------------------------------------------------------.
+  | EDSL®            Tree Display                        |
+  | Command ===>                                         |
+  |                                                      |
+  | . 'TRIDJK.GEN3'                                      |
+  |       'TRIDJK.GEN3'                                  |
+  | . GENS-2                                             |
+  |       'TRIDJK.GEN3'                                  |
+  |       'TRIDJK.GEN7.PDS'                              |
+  |       'AD.RACFADM.*'                                 |
+  | . SequentialDatasetsBIN...                           |
+  |       'TRIDJK.BIN'                                   |
+  |       'TRIDJK.BIN2'                                  |
+  | . RACFADM Version 130                                |
+  |       'ad.racfadm.v130.*'                            |
+  | . g5                                                 |
+  |       'TRIDJK.GEN.CNTL'                              |
+  |       'TRIDJK.GEN3'                                  |
+  |   ------------------------                           |
+  | . Unix                                               |
+  |       /u/tridjk/                                     |
+  .------------------------------------------------------.
+
+ Syntax: Tree
+
+<TABLE>
+ Function:
+
+ Table will display the ISPF table view when in Tree display.
+
+   .-------------------------------------------------------.
+  | EDSL® ----------- Enhanced Data Set List  1.37       |
+  | Command ===>                                         |
+  |                                                      |
+  | Select     Type   Dataset/Group                      |
+  |              D    'TRIDJK.GEN3'                      |
+  |              L    GENS-2                             |
+  |              G    SequentialDatasetsBIN...           |
+  |              L    RACFADM Version 130                |
+  |              G    g5                                 |
+  |                   ------------------------           |
+  |              O    Unix                               |
+  |              G    aftunix                            |
+  |              G    g11                                |
+  |                   ------------------------           |
+  |              D    'TRIDJK.GEN4'                      |
+  .------------------------------------------------------.
+
+ Syntax: Table
+
+<X ALL>
+ Function:
+
+ X ALL will exclude all dsname lines in the Tree display.
+
+  .------------------------------------------------------.
+  | EDSL®             Tree Display                       |
+  | Command ===>                                         |
+  |                                                      |
+  | + 'TRIDJK.GEN3'                                      |
+  | + GENS-2                                             |
+  | + SequentialDatasetsBIN...                           |
+  | + RACFADM Version 130                                |
+  | + g5                                                 |
+  |   ------------------------                           |
+  | + Unix                                               |
+  | + aftunix                                            |
+  | + g11                                                |
+  |   ------------------------                           |
+  | + 'TRIDJK.GEN4'                                      |
+  .------------------------------------------------------.
+
+ Syntax: X ALL
+
+<VERSION>
+ Function:
+
+ Version will display the EDSL version in the long message area.
+
+ Syntax: Version
+
+  .-------------------------------------.
+  | EDSL® 1.37                          |
+  | Lionel Dyck and John Kalinich       |
+  | The ISPF Cabal - Vive la révolution |
+  | Copyleft - GNU GPL v3               |
+  .-------------------------------------.
+
+</>
+ Function:
+
+ / will display a point-and-shoot Hotlist Command pop-up panel
+ for you to select from.
+
+  .------------ EDSL Primary Commands: -------------.
+  | Command ===>                                    |
+  |                                                 |
+  |  I Insert  - insert a row into the table        |
+  |  H History - display the change history of EDSL |
+  |  S Set     - display the settings window        |
+  |  T Tree    - display a tree view of the table   |
+  |  V Version - display EDSL® version number       |
+  |  F Find    - find the provided string           |
+  |    Find:                                        |
+  |                                                 |
+  |            Or F3 to cancel                      |
+  .-------------------------------------------------.
+
+ Syntax: /
+
+<HISTORY>
+ Function:
+
+ History will display a history of EDSL modifications.
+
+ Syntax: Hist
+
+<HEL>
+ Function:
+
+ HEL will display the EDSL pseudo TSO Help member that you are
+ reading now.
+
+ Syntax: HEL command
+
+<MESSAGES>
+ Function:
+ The MESSAGE HELP entry is provided to document EDSL messages.
+
+ EDSL has the following messages:
+
+  CHARS 'chars' found
+   Search for CHARS 'chars' was successful.
+
+  *Bottom of list reached*
+   CHARS 'chars' not found. Press RFIND key to continue the search from
+   the top of the member list.
+
+  EDSL® version
+   The VERSION command displays the EDSL version information.
+
+  EDSL® Motto...
+   When you believe an idea, hold true.
 >End */
 
 /* --------------------  rexx procedure  -------------------- *
