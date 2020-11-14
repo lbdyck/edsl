@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.40'
+  ver = '1.41'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,8 +18,9 @@
   |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
-  |    1.40    11/12/20 JK  - Edit EDSHELP skeleton (Tree)     |
-  |    1.39    11/12/20 JK  - Add HEL command                  |
+  |    1.41    11/14/20 JK  - Add / primary command (Tree)     |
+  |    1.40    11/13/20 JK  - Edit EDSHELP skeleton            |
+  |    1.39    11/12/20 JK  - Add HEL primary command          |
   |    1.38    11/12/20 LBD - Correct exit after Set change    |
   |    1.37    11/11/20 JK  - If SET changes view, then branch |
   |    1.36    11/11/20 JK  - Correct dataset logic (Tree)     |
@@ -223,9 +224,9 @@
     end
     Select
       When abbrev('INSERT',zcmd,1) = 1 then call do_insert '1'
-      When abbrev('FIND',word(zcmd,1),1)   = 1 then call do_find
-      When abbrev('TREE',word(zcmd,1),1)   = 1 then call do_tree
-      When abbrev('SET',word(zcmd,1),1)   = 1 then do
+      When abbrev('FIND',word(zcmd,1),1) = 1 then call do_find
+      When abbrev('TREE',word(zcmd,1),1) = 1 then call do_tree
+      When abbrev('SET',word(zcmd,1),1)  = 1 then do
         'vget (edsinit)'
         save_init = edsinit
         call do_settings
@@ -764,6 +765,7 @@ Tree_Exclude:
   turq   = '05'x
   pink   = '06'x
   yellow = '07'x
+  ndisp  = '09'x                            /*  non-display field     */
   sel    = '10'x                            /* . line command pad     */
   selx   = '11'x                            /* + line command pad     */
   selh   = '12'x                            /*   line command pad     */
@@ -784,7 +786,7 @@ Tree_Exclude:
     ttn = ttn + 1
     do
       if edstype = 'D' then
-        edsgrp = left(edsdisp,24)||'09'x||lineno
+        edsgrp = left(edsdisp,24)||ndisp||lineno
       group = edsgrp
       all_groups = all_groups left(group,24)       /* Build list of   */
                                                    /*   groups        */
@@ -882,11 +884,22 @@ Cursor_Pos_Select:
   zcmd_lower = zcmd
   zcmd = translate(zcmd)
   select
-  When abbrev('TABLE',zcmd,1) = 1 then do
+  when abbrev('/',zcmd,1) = 1 then do
+    zcmd = ''
+    call pfshow 'off'
+    'Addpop Row(4) column(15)'
+    'Display Panel(edsdynpo)'
+    'rempop'
+    call pfshow 'reset'
+    end
+  otherwise nop
+  end
+  select
+  when abbrev('TABLE',zcmd,1) = 1 then do
     listit = 1
     return
     end
-  When abbrev('SET',word(zcmd,1),1)   = 1 then do
+  when abbrev('SET',word(zcmd,1),1)   = 1 then do
        'vget (edsinit)'
        save_init = edsinit
        call do_settings
@@ -930,6 +943,10 @@ Cursor_Pos_Select:
       end
     end
   when abbrev("HEL",word(zcmd,1),3) = 1 then call do_help
+  when abbrev("HISTORY",word(zcmd,1),1) = 1 then do
+    zcmd = ''
+    call do_history
+    end
   when abbrev("VERSION",word(zcmd,1),1) = 1 then call do_version
   otherwise nop
   end
@@ -987,6 +1004,7 @@ Cursor_Pos_Select:
       else                                          /* Group, DSLIST  */
         do
           rsel = substr(dynarea,2+(line-1)*80,1)
+          rmem = null
           edsgrp = left(grp,24)
           'tbtop edsl'
           'tbscan edsl arglist(edsgrp)'
@@ -1191,7 +1209,6 @@ vput (zscml) profile
 %Node Colors:  `Group   ~OMVS   ]DSList   [DSName
 ^
 %Primary Commands:
-^
     %Find   ^to find the provided string
     %RFind  ^to repeat find of the provided string
     %REFresh^to refresh the group tree display
@@ -1200,9 +1217,10 @@ vput (zscml) profile
     %Table  ^to switch to ISPF table view
     %Set    ^to display the settings window
     %HEL cmd^to display EDSL® help member
+    %History^to display change history of EDSL
+    %Version^to display EDSL® version number
 ^
 %Line Commands:
-^
     %B^  Browse     %M^  Move up       %O^  Open in Dataset List
     %D^  Delete     %N^  Move down     %S^  Library utility
     %E^  Edit       %U^  Update        %.^  Cursor select (S)
@@ -1230,6 +1248,50 @@ vput (zscml) profile
       &ckey = 'ENTER'
   vput (ckey) shared
 )end
+>Panel edsdynpo
+)Attr Default(%+_)
+  _ type( input) intens(low ) caps(on ) just(left ) hilite(uscore)
+  + type(text) intens(low) skip(on)
+  ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
+  @ type(output) caps(off)
+)Body Window(48,12)
+%Command ===>_z
++
++]I+Insert  - insert a row into the table
++]H+History - display the change history of EDSL
++]S+Set     - display the settings window
++]T+Table   - display the EDSL table
++]V+Version - display EDSL® version number
++]R+Refresh - refresh the group tree display
++]X+Exclude - exclude all group tree nodes
++
+           +Or%F3+to cancel
+)Init
+ &zwinttl = 'Tree Primary Commands:'
+ .zvars = '(zcmd)'
+ .cursor = zcmd
+ .help = edsdynh
+ &I = I
+ &H = H
+ &R = R
+ &S = S
+ &T = T
+ &V = V
+ &X = X
+)Proc
+ if (&zcmd = 'X')
+   &zcmd = 'X ALL'
+ if (&zcmd = 'R')
+   &zcmd = 'REF'
+)PNTS
+ FIELD(I)  VAR(ZCMD) VAL('I')
+ FIELD(H)  VAR(ZCMD) VAL('H')
+ FIELD(R)  VAR(ZCMD) VAL('REF')
+ FIELD(S)  VAR(ZCMD) VAL('S')
+ FIELD(T)  VAR(ZCMD) VAL('T')
+ FIELD(V)  VAR(ZCMD) VAL('V')
+ FIELD(X)  VAR(ZCMD) VAL('X ALL')
+)End
 >Panel edsdyno
 )Attr Default(%+_)
   _ type( input) intens(low ) caps(on ) just(left ) hilite(uscore)
@@ -1918,7 +1980,15 @@ $rsel     +  @z + @edsdisp                                              +
 )End
 >Skel edshelp
  Function:
- The EDSL exec invokes the Extended Data Set List Dialog.
+ The EDSL exec invokes the Extended Data Set List dialog.
+
+ The Enhanced Data Set List dialog makes it easy to access an individual
+ dataset or OMVS file (Browse/Edit/View), groups of datasets (DSList or
+ Browse/Edit/View), or an OMVS directory (UDList).
+
+ A group will create or replace a list within the existing ISPF Personal
+ Data Set List structure after an Open in DSLIST has been issued for the
+ group.  The lists can be accessed in ISPF by the REFOPEND command.
 
  ---
  Copyleft (C) 2020, Lionel Dyck and Janko Kalinic
@@ -1961,10 +2031,10 @@ Operands:
                  (E=Edit, B=Browse, V=View, O=DSList/UDList)
   member       - member name or mask.
 
-<COMMANDS>
+<PRIMARY><COMMANDS>
     Find    - Find the provided string
     HEL cmd - Display EDSL help for a cmd
-    History - Display modification history          (Table)
+    History - Display modification history
     Insert  - Insert a row into the table
     REFresh - Refresh the group tree display        (Tree)
     RFind   - Repeat find of the provided string    (Tree)
@@ -1973,9 +2043,10 @@ Operands:
     Tree    - Display the group tree view           (Table)
     Version - Display EDSL® version number
     X ALL   - Exclude all group tree nodes          (Tree)
-    /       - Popup selection menu                  (Table)
+    Debug   - Dump table for debugging              (Tree)
+    /       - Popup selection menu
 
-<LINECMDS>
+<LINE><COMMANDS>
 
   B   -  Browse
   D   -  Delete to delete a row
@@ -2042,6 +2113,9 @@ Operands:
 
  REFresh will refresh the Tree Display by reading the EDSL ISPF
  table.
+
+
+ Syntax: REFresh
 
 <SET>
  Function:
@@ -2180,7 +2254,7 @@ Operands:
 
  History will display a history of EDSL modifications.
 
- Syntax: Hist
+ Syntax: History
 
 <HEL>
  Function:
