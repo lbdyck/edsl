@@ -772,7 +772,7 @@ Tree_Exclude:
   selh   = '12'x                            /*   line command pad     */
   dyndata  = ''                             /* initialize data        */
   shadata  = ''                             /* initialize shadow var  */
-  parse value '0 0 0 0 0' with g o l d h    /* edstype statistics     */
+  parse value '0 0 0 0 0' with g# o# l# d# h#   /* edstype statistics */
   maxlines = 0
 
   Address ISPExec
@@ -782,11 +782,11 @@ Tree_Exclude:
   all_groups  = ''
   do forever                                       /* Build dynamic   */
     'tbget edsl'                                   /*   area          */
-    if edstype = 'G' then g = g + 1
-    if edstype = 'O' then o = o + 1
-    if edstype = 'L' then l = l + 1
-    if edstype = 'D' then d = d + 1
-    if edstype = ' ' then h = h + 1
+    if edstype = 'G' then g# = g# + 1
+    if edstype = 'O' then o# = o# + 1
+    if edstype = 'L' then l# = l# + 1
+    if edstype = 'D' then d# = d# + 1
+    if edstype = ' ' then h# = h# + 1
     tree_tbl.ttn = 'edstype='left(edstype,1)  'edsgrp='left(edsgrp,24),
                     'edsdsn='edsdsn  'edsloc='edsloc
     lineno = right(ttn,5,'0')
@@ -1164,12 +1164,12 @@ Do_Help:
  * --------------------------------- */
 Do_Stats:
     zerrsm = ''
-    zerrlm = left('Group  = 'right(g,5),73),
-             left('OMVS   = 'right(o,5),73),
-             left('DSList = 'right(l,5),73),
-             left('DSName = 'right(d,5),73),
-             left('Header = 'right(h,5),73),
-             left('Total  = 'right(g+o+l+d+h,5),73)
+    zerrlm = left('Group  = 'right(g#,5),73),
+             left('OMVS   = 'right(o#,5),73),
+             left('DSList = 'right(l#,5),73),
+             left('DSName = 'right(d#,5),73),
+             left('Header = 'right(h#,5),73),
+             left('Total  = 'right(g#+o#+l#+d#+h#,5),73)
     zerralrm = 'NO'
     zerrhm = 'edsdynh'
     Address ISPExec
