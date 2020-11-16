@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.41'
+  ver = '1.42'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,7 @@
   |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.42    11/16/20 JK  - Update header logic (Tree)       |
   |    1.41    11/14/20 JK  - Add / primary command (Tree)     |
   |    1.40    11/13/20 JK  - Edit EDSHELP skeleton            |
   |    1.39    11/12/20 JK  - Add HEL primary command          |
@@ -771,6 +772,7 @@ Tree_Exclude:
   selh   = '12'x                            /*   line command pad     */
   dyndata  = ''                             /* initialize data        */
   shadata  = ''                             /* initialize shadow var  */
+  parse value '0 0 0 0 0' with g o l d h    /* edstype statistics     */
   maxlines = 0
 
   Address ISPExec
@@ -780,6 +782,11 @@ Tree_Exclude:
   all_groups  = ''
   do forever                                       /* Build dynamic   */
     'tbget edsl'                                   /*   area          */
+    if edstype = 'G' then g = g + 1
+    if edstype = 'O' then o = o + 1
+    if edstype = 'L' then l = l + 1
+    if edstype = 'D' then d = d + 1
+    if edstype = ' ' then h = h + 1
     tree_tbl.ttn = 'edstype='left(edstype,1)  'edsgrp='left(edsgrp,24),
                     'edsdsn='edsdsn  'edsloc='edsloc
     lineno = right(ttn,5,'0')
@@ -947,6 +954,10 @@ Cursor_Pos_Select:
     zcmd = ''
     call do_history
     end
+  when abbrev("METRICS",word(zcmd,1),1) = 1 then do
+    zcmd = ''
+    call do_stats
+    end
   when abbrev("VERSION",word(zcmd,1),1) = 1 then call do_version
   otherwise nop
   end
@@ -958,15 +969,13 @@ Cursor_Pos_Select:
     dsngrp = substr(dynarea,4+(line-1)*80,30)
     /* Popup line commands */
     if substr(dynarea,2+(line-1)*80,1) = '/' then do
-      if substr(dynarea,3+(line-1)*80,1) = '04'x then     /* Header   */
-         leave
       edsdisp = left(grp,24)
       call pfshow 'off'
       'Addpop Row(4) column(15)'
-      if edstype /= null then
+      if substr(dynarea,3+(line-1)*80,1) /= '04'x then    /* ^Header  */
         'Display Panel(edsdyno)'
       else
-        'Display Panel(edslos)'
+        'Display Panel(edslos)'                           /* Header   */
       'rempop'
       call pfshow 'reset'
       slash = zcmd
@@ -1019,7 +1028,8 @@ Cursor_Pos_Select:
          substr(dynarea,2+(line-1)*80,1) = 'M' |,
          substr(dynarea,2+(line-1)*80,1) = 'N' |,
          substr(dynarea,2+(line-1)*80,1) = 'U' then do
-      if substr(dynarea,3+(line-1)*80,1) = '04'x then     /* Header   */
+      if substr(dynarea,3+(line-1)*80,1) = '04'x &,       /* Header   */
+         pos(substr(dynarea,2+(line-1)*80,1),'O') = 1 then
         leave
       if substr(dynarea,3+(line-1)*80,1) = '06'x then do  /* DSN  */
         rsel = substr(dynarea,2+(line-1)*80,1)
@@ -1122,7 +1132,7 @@ Do_Version:
              left('The ISPF Cabal - Vive la révolution',73),
              left('Copyleft - GNU GPL v3',73)
     zerralrm = 'NO'
-    zerrhm = 'edsdlh'
+    zerrhm = 'edsdynh'
     Address ISPExec
     'setmsg msg(isrz002)'
     return
@@ -1148,6 +1158,22 @@ Do_Help:
     "view dataid("skel") member(edshelp)",
       "macro(edsfhelp) parm(findcmd)"
     "lmfree dataid("skel")"
+    return
+/* --------------------------------- *
+ | Display EDSL® row statistics      |
+ * --------------------------------- */
+Do_Stats:
+    zerrsm = ''
+    zerrlm = left('Group  = 'right(g,5),73),
+             left('OMVS   = 'right(o,5),73),
+             left('DSList = 'right(l,5),73),
+             left('DSName = 'right(d,5),73),
+             left('Header = 'right(h,5),73),
+             left('Total  = 'right(g+o+l+d+h,5),73)
+    zerralrm = 'NO'
+    zerrhm = 'edsdynh'
+    Address ISPExec
+    'setmsg msg(isrz002)'
     return
 /* start of inline elements
 >Start
@@ -2043,7 +2069,8 @@ Operands:
     Tree    - Display the group tree view           (Table)
     Version - Display EDSL® version number
     X ALL   - Exclude all group tree nodes          (Tree)
-    Debug   - Dump table for debugging              (Tree)
+    Debug   - Dump table for debugging              (Tree-undoc)
+    Metrics - Display EDSTYPE statistics            (Tree-undoc)
     /       - Popup selection menu
 
 <LINE><COMMANDS>
