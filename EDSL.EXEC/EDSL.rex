@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.42'
+  ver = '1.44'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,8 @@
   |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.44    11/18/20 JK  - Add ISPList command (Tree)       |
+  |    1.43    11/16/20 JK  - Add QREF primary command         |
   |    1.42    11/16/20 JK  - Update header logic (Tree)       |
   |    1.41    11/14/20 JK  - Add / primary command (Tree)     |
   |    1.40    11/13/20 JK  - Edit EDSHELP skeleton            |
@@ -239,6 +241,10 @@
           end
         end
       When abbrev('VERSION',word(zcmd,1),1) = 1 then call do_version
+      when abbrev("QREF",word(zcmd,1),1) = 1 then do
+        zcmd = ''
+        "select pgm(isptutor) parm(edsqref)"
+        end
       When abbrev("HEL",word(zcmd,1),3) = 1 then call do_help
       When abbrev("HISTORY",word(zcmd,1),1) = 1 then do
         zcmd = ''
@@ -949,7 +955,11 @@ Cursor_Pos_Select:
       say tree_tbl.x
       end
     end
-  when abbrev("HEL",word(zcmd,1),3) = 1 then call do_help
+  when abbrev("ISPLIST",word(zcmd,1),4) = 1 then do
+    zcmd = ''
+    call do_isplist
+    end
+  When abbrev("HEL",word(zcmd,1),3) = 1 then call do_help
   when abbrev("HISTORY",word(zcmd,1),1) = 1 then do
     zcmd = ''
     call do_history
@@ -957,6 +967,10 @@ Cursor_Pos_Select:
   when abbrev("METRICS",word(zcmd,1),1) = 1 then do
     zcmd = ''
     call do_stats
+    end
+  when abbrev("QREF",word(zcmd,1),1) = 1 then do
+    zcmd = ''
+    "select pgm(isptutor) parm(edsqref)"
     end
   when abbrev("VERSION",word(zcmd,1),1) = 1 then call do_version
   otherwise nop
@@ -1006,7 +1020,7 @@ Cursor_Pos_Select:
          leave
       if substr(dynarea,3+(line-1)*80,1) = '06'x then do  /* DSN  */
         rsel = substr(dynarea,2+(line-1)*80,1)
-        edsdsn = left(grp,24)
+        edsdsn = substr(dynarea,8+(line)*80,56)     /* DSN next line  */
         edstype = 'D'
         edsgrp = ''
         end
@@ -1036,8 +1050,6 @@ Cursor_Pos_Select:
         skipnum = substr(dsngrp,26,5)          /* Non-display row num */
         'tbtop edsl'
         'tbskip edsl number('skipnum')'
-        edsdsn = left(grp,24)
-        edsgrp = left(grp,24)
         end
       else                                          /* Group, DSLIST  */
         do
@@ -1121,6 +1133,33 @@ Tree_Find:
     Address ISPExec 'setmsg msg(isrz002)'
     end
   return
+/* --------------------------------- *
+ | Write tree table to ISPLIST       |
+ * --------------------------------- */
+Do_ISPList:
+    do x = 1 to tree_tbl.0
+      parse var tree_tbl.x with 'edstype=' typ 'edsgrp=' grp,
+                                'edsdsn='  dsn 'edsloc=' loc
+      d. = ''
+      parse var dsn d.1 d.2  d.3  d.4  d.5  d.6  d.7  d.8,
+                    d.9 d.10 d.11 d.12 d.13 d.14 d.15 d.16
+      if left(typ,1) = 'D' then
+        grp = left(dsn,24)
+      dtl = left(grp,24)
+      'list bufname(dtl) linelen(80) single'
+      do i = 1 to 16
+        if d.i <> '' then do
+          dtl = '    'd.i
+          'list bufname(dtl) linelen(80) single'
+          end
+        end
+      end
+    zerralrm = 'NO'
+    zerrhm = 'edsdynh'
+    zerrsm = tree_tbl.0 'Groups listed'
+    zerrlm = 'Tree table has been successfully listed'
+    'Setmsg msg(isrz002)'
+    return
 /* --------------------------------- *
  | Display EDSL® version info        |
  * --------------------------------- */
@@ -1236,7 +1275,6 @@ vput (zscml) profile
 ^
 %Primary Commands:
     %Find   ^to find the provided string
-    %RFind  ^to repeat find of the provided string
     %REFresh^to refresh the group tree display
     %X ALL  ^to exclude all group tree nodes
     %Insert ^to insert a row into the table
@@ -1391,6 +1429,59 @@ vput (zscml) profile
 *ENDREXX
  ver (&edsinit,nb,list,TABLE,TREE)
  vput (edsinit) profile
+)End
+>Panel edsqref
+)Attr Default(`[_)
+/* _ type( input) intens(high) caps(on ) just(left )               */
+   ! type(text) intens(high) caps(off) just(asis ) color(white)
+   ` type(text) intens(high) caps(off) just(asis ) color(yellow)
+   ~ type(text) intens(high) caps(off) just(asis ) color(green) hilite(uscore)
+   [ type(text) intens(low ) color(turq)
+   ] type(text) intens(low ) color(blue)
+     skip(on)
+   ^ area(SCRL) Extend(ON)
+)Body Window(62,20)
+
+~Command[          ~Function[
+^help ------------------------------------------------------^
+)Area Help
+!Find             -[Find the provided string
+!HEL cmd          -[Display EDSL help for a cmd
+!History          -[Display modification history
+!Insert           -[Insert a row into the table
+!Qref             -[What you are reading now
+!REFresh          -]Refresh the group tree display
+!RFind            -]Repeat find of the provided string
+!Set              -[Display the settings window
+!Table            -]Switch to ISPF table view
+!Tree             -[Display the group tree view
+!Version          -[Display EDSL® version number
+!X ALL            -]Exclude all group tree nodes
+!Debug            -]Dump table for debugging
+!Metrics          -]Display EDSTYPE statistics
+!ISPList          -]Write tree table to ISPLIST
+!/                -[Popup selection menu
+`B               !-[Browse
+`D               !-[Delete to delete a row
+`E               !-[Edit
+`I               !-[Insert a row
+`M               !-[Move row up one
+`MD              !-[Move row down one
+`Mx              !-[Move row up (-#) down(+#)
+`N               !-]Move row down one
+`/               !-[Popup Selection menu
+`O               !-[Open in Dataset List
+`R               !-[To display the group
+`S               !-[Select
+`.               !-[Cursor select (S)
+`U               !-[Update (alias C)
+`V               !-[View
+`X               !-]Exclude tree node (toggle)
+`any             !-[(with Dataset only)
+)Init
+&zwinttl = 'EDSL Quick Reference'
+&zup = EDSQREF
+)Proc
 )End
 >Exec edsfhelp
 /* rexx */
@@ -2058,6 +2149,7 @@ Operands:
   member       - member name or mask.
 
 <PRIMARY><COMMANDS>
+
     Find    - Find the provided string
     HEL cmd - Display EDSL help for a cmd
     History - Display modification history
@@ -2069,8 +2161,10 @@ Operands:
     Tree    - Display the group tree view           (Table)
     Version - Display EDSL® version number
     X ALL   - Exclude all group tree nodes          (Tree)
+    Qref    - Display EDSL® quick reference
     Debug   - Dump table for debugging              (Tree-undoc)
     Metrics - Display EDSTYPE statistics            (Tree-undoc)
+    ISPList - Write tree table to ISPLIST           (Tree-undoc)
     /       - Popup selection menu
 
 <LINE><COMMANDS>
@@ -2282,6 +2376,21 @@ Operands:
  History will display a history of EDSL modifications.
 
  Syntax: History
+
+<QREF>
+ Function:
+
+ Qref will display the PGLITE quick reference card.  Commands that are
+ only available in the Tree display view are colored blue.
+
+ Syntax: Qref
+
+<ISPLIST>
+ Function:
+
+ISPList will write out the tree table to the ISPLIST file.
+
+ Syntax: ISPList
 
 <HEL>
  Function:
