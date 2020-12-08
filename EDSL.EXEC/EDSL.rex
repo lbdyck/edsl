@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.45'
+  ver = '1.46'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,7 @@
   |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.46    12/08/20 JK  - Add QREF to / popup              |
   |    1.45    12/08/20 LBD - Allow O for datasets (D)         |
   |    1.44    11/18/20 JK  - Add ISPList command (Tree)       |
   |    1.43    11/16/20 JK  - Add QREF primary command         |
@@ -1236,7 +1237,7 @@ Do_Stats:
   ?  TYPE(OUTPUT) PAS(ON)    COLOR(YELLOW) CAPS(OFF) HILITE(USCORE)
   !  TYPE(PS)
 )BODY EXPAND(\\)
-%EDSL®+                      $Tree Display              [rowline
+%EDSL®[ver +                 $Tree Display              [rowline
 %Command ===>¦zcmd                                            %Scroll ===>_Z   +
 +
 @dynarea,dynshad                                                               @
@@ -1313,16 +1314,17 @@ vput (zscml) profile
   + type(text) intens(low) skip(on)
   ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
   @ type(output) caps(off)
-)Body Window(48,12)
+)Body Window(49,12)
 %Command ===>_z
 +
-+]I+Insert  - insert a row into the table
-+]H+History - display the change history of EDSL
-+]S+Set     - display the settings window
-+]T+Table   - display the EDSL table
-+]V+Version - display EDSL® version number
-+]R+Refresh - refresh the group tree display
-+]X+Exclude - exclude all group tree nodes
++]I+Insert   - insert a row into the table
++]H+History  - display the change history of EDSL
++]Q+Quickref - display command quick reference
++]S+Set      - display the settings window
++]T+Table    - display the EDSL table
++]V+Version  - display EDSL® version number
++]R+Refresh  - refresh the group tree display
++]X+Exclude  - exclude all group tree nodes
 +
            +Or%F3+to cancel
 )Init
@@ -1332,6 +1334,7 @@ vput (zscml) profile
  .help = edsdynh
  &I = I
  &H = H
+ &Q = Q
  &R = R
  &S = S
  &T = T
@@ -1345,6 +1348,7 @@ vput (zscml) profile
 )PNTS
  FIELD(I)  VAR(ZCMD) VAL('I')
  FIELD(H)  VAR(ZCMD) VAL('H')
+ FIELD(Q)  VAR(ZCMD) VAL('Q')
  FIELD(R)  VAR(ZCMD) VAL('REF')
  FIELD(S)  VAR(ZCMD) VAL('S')
  FIELD(T)  VAR(ZCMD) VAL('T')
@@ -1457,7 +1461,7 @@ vput (zscml) profile
 !ISPList          -]Write tree table to ISPLIST
 !/                -[Popup selection menu
 `B               !-[Browse
-`D               !-[Delete to delete a row
+`D               !-[Delete a row
 `E               !-[Edit
 `I               !-[Insert a row
 `M               !-[Move row up one
@@ -1466,7 +1470,7 @@ vput (zscml) profile
 `N               !-]Move row down one
 `/               !-[Popup Selection menu
 `O               !-[Open in Dataset List
-`R               !-[To display the group
+`R               !-[Display the group
 `S               !-[Select
 `.               !-[Cursor select (S)
 `U               !-[Update (alias C)
@@ -1492,7 +1496,7 @@ else
  $ type(input ) hilite(uscore) caps(on) intens(low)
  _ type(input ) hilite(uscore) caps(on) intens(low)
 )Body Expand(\\)
-%EDSL®+\-\%Enhanced Data Set List+@ver +\-\
+%EDSL®@ver +\-\%Enhanced Data Set List+\-\
 %Command ===>_zcmd                \ \%Scroll ===>_edsc+
 +
 %Select     Type   Dataset/Group
@@ -1523,15 +1527,16 @@ $rsel     +  @z + @edsdisp                                              +
   + type(text) intens(low) skip(on)
   ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
   @ type(output) caps(off)
-)Body Window(48,11)
+)Body Window(49,12)
 %Command ===>_z
 +
-+]I+Insert  - insert a row into the table
-+]H+History - display the change history of EDSL
-+]S+Set     - display the settings window
-+]T+Tree    - display a tree view of the table
-+]V+Version - display EDSL® version number
-+]F+Find    - find the provided string
++]I+Insert   - insert a row into the table
++]H+History  - display the change history of EDSL
++]Q+Quickref - display command quick reference
++]S+Set      - display the settings window
++]T+Tree     - display a tree view of the table
++]V+Version  - display EDSL® version number
++]F+Find     - find the provided string
 +   Find:_fstring                 +
 +
            +Or%F3+to cancel
@@ -1543,6 +1548,7 @@ $rsel     +  @z + @edsdisp                                              +
  &I = I
  &F = F
  &H = H
+ &Q = Q
  &S = S
  &T = T
  &V = V
@@ -1553,6 +1559,7 @@ $rsel     +  @z + @edsdisp                                              +
  FIELD(I)  VAR(ZCMD) VAL('I')
  FIELD(F)  VAR(ZCMD) VAL('F')
  FIELD(H)  VAR(ZCMD) VAL('H')
+ FIELD(Q)  VAR(ZCMD) VAL('Q')
  FIELD(S)  VAR(ZCMD) VAL('S')
  FIELD(T)  VAR(ZCMD) VAL('T')
  FIELD(V)  VAR(ZCMD) VAL('V')
@@ -2165,7 +2172,7 @@ Operands:
 <LINE><COMMANDS>
 
   B   -  Browse
-  D   -  Delete to delete a row
+  D   -  Delete a row
   E   -  Edit
   I   -  Insert a row
   M   -  Move row up one
@@ -2174,7 +2181,7 @@ Operands:
   N   -  Move row down one                 (Tree)
   /   -  Popup Selection menu
   O   -  Open in Dataset List
-  R   -  To display the group              (Table)
+  R   -  Display the group                 (Table)
   S   -  Select
   .   -  Cursor select (S)                 (Tree)
   U   -  Update (alias C)
@@ -2349,19 +2356,20 @@ Operands:
  / will display a point-and-shoot Hotlist Command pop-up panel
  for you to select from.
 
-  .------------ EDSL Primary Commands: -------------.
-  | Command ===>                                    |
-  |                                                 |
-  |  I Insert  - insert a row into the table        |
-  |  H History - display the change history of EDSL |
-  |  S Set     - display the settings window        |
-  |  T Tree    - display a tree view of the table   |
-  |  V Version - display EDSL® version number       |
-  |  F Find    - find the provided string           |
-  |    Find:                                        |
-  |                                                 |
-  |            Or F3 to cancel                      |
-  .-------------------------------------------------.
+  .------------ EDSL Primary Commands: --------------.
+  | Command ===>                                     |
+  |                                                  |
+  |  I Insert   - insert a row into the table        |
+  |  H History  - display the change history of EDSL |
+  |  Q Quickref - display command quick reference    |
+  |  S Set      - display the settings window        |
+  |  T Tree     - display a tree view of the table   |
+  |  V Version  - display EDSL® version number       |
+  |  F Find     - find the provided string           |
+  |    Find:                                         |
+  |                                                  |
+  |            Or F3 to cancel                       |
+  .--------------------------------------------------.
 
  Syntax: /
 
