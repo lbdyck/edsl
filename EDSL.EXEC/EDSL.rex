@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.44'
+  ver = '1.45'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,7 @@
   |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.45    12/08/20 LBD - Allow O for datasets (D)         |
   |    1.44    11/18/20 JK  - Add ISPList command (Tree)       |
   |    1.43    11/16/20 JK  - Add QREF primary command         |
   |    1.42    11/16/20 JK  - Update header logic (Tree)       |
@@ -582,12 +583,6 @@ Do_OMVS:
 Do_OpenDSL:
   if edstype = 'O' then do
     call do_omvs
-    return
-  end
-  if edstype = 'D' then do
-    zedsmsg = ''
-    zedlmsg = 'OpenDSL is not allowed for a Dataset Entry.'
-    'setmsg msg(isrz001)'
     return
   end
   'tbopen isrplist share write'
