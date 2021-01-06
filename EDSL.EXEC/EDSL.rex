@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.46'
+  ver = '1.48'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,11 @@
   |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.48    01/06/21 JK  - Correct empty table with TREE    |
+  |                     LBD - Update table row tutorial        |
+  |    1.47    12/14/20 JK  - Click on DSN invokes "cmd dsn"   |
+  |                     LBD - Make TREE the default view       |
+  |                         - Revise Tutorials (combine)       |
   |    1.46    12/08/20 JK  - Add QREF to / popup              |
   |    1.45    12/08/20 LBD - Allow O for datasets (D)         |
   |    1.44    11/18/20 JK  - Add ISPList command (Tree)       |
@@ -176,7 +181,10 @@
   | Display Selection Table |
   * ----------------------- */
   'vget (edsinit)'
+  if edsinit = null then edsinit = 'TREE'
   if edsinit = 'TREE' then do        /* Dynamic--display tree format  */
+    'tbquery edsl rownum(rows)'
+    if rows = 0 then call do_insert
     listit = 0
     call do_tree
     if listit = 0 then call done
@@ -887,6 +895,28 @@ Cursor_Pos_Select:
          dynarea = substr(dynarea,1,cpos-1)||'S'||,
                    substr(dynarea,cpos+1,length(dynarea))
     end
+Cursor_Pos_DSN:
+  if cname = 'DYNAREA' then do                     /* Dynamic area    */
+    row = (cpos  % 80)
+    col = (cpos // 80)
+    if col = 0 then
+      col = 80
+    else
+      row = row + 1
+    rowdsn = strip(substr(dynarea,(cpos-col)+8,56))
+    /* If cursor on DSN line, then invoke the command */
+    if left(rowdsn,1) = "'" & right(rowdsn,1) = "'" & col > 2 &,
+       pos('*',rowdsn) = 0  & pos('/',rowdsn) = 0 then do
+      'control display line start(1)'
+      'vget (edscmd)'
+      if edscmd = '' then
+        edscmd = 'PDS'
+      if wordpos(word(edscmd,1),'EDIT BROWSE VIEW') > 0 then
+        edscmd "dataset("rowdsn")"
+      else
+        "select cmd("edscmd rowdsn")"
+      end
+    end
 /* --------------------------------- *
  | Tree primary commands             |
  * --------------------------------- */
@@ -1151,7 +1181,7 @@ Do_ISPList:
         end
       end
     zerralrm = 'NO'
-    zerrhm = 'edsdynh'
+    zerrhm = 'edslh1a'
     zerrsm = tree_tbl.0 'Groups listed'
     zerrlm = 'Tree table has been successfully listed'
     'Setmsg msg(isrz002)'
@@ -1167,7 +1197,7 @@ Do_Version:
              left('The ISPF Cabal - Vive la révolution',73),
              left('Copyleft - GNU GPL v3',73)
     zerralrm = 'NO'
-    zerrhm = 'edsdynh'
+    zerrhm = 'edslh1a'
     Address ISPExec
     'setmsg msg(isrz002)'
     return
@@ -1206,7 +1236,7 @@ Do_Stats:
              left('Header = 'right(h#,5),73),
              left('Total  = 'right(g#+o#+l#+d#+h#,5),73)
     zerralrm = 'NO'
-    zerrhm = 'edsdynh'
+    zerrhm = 'edslh1a'
     Address ISPExec
     'setmsg msg(isrz002)'
     return
@@ -1246,14 +1276,14 @@ Do_Stats:
 *REXX(* rowline curline maxlines)
 rowline = 'Row' curline 'of' maxlines
 *Endrexx
-.help  = 'edsdynh'
+.help  = 'edslh1a'
 if (&zscml = ' ') &zscml = 'CSR'
 )PROC
 vput (zscml) profile
 &cpos = .CSRPOS
 &cname = .CURSOR
 )END
->Panel edsdynh
+>Panel edslh1a
 )Attr Default(%^_)
  @ type(output) caps(off) intens(low) color(turq)
  ~ type(text) caps(off) intens(low) color(yellow)
@@ -1264,21 +1294,22 @@ vput (zscml) profile
  _ type(input ) hilite(uscore) caps(on) intens(low) intens(low)
    color(red)
 )Body Expand(\\)
-^Tutorial\-\%Enhanced Data Set List^\-\Tutorial
+^Tutorial\-\%Enhanced Data Set List - Tree View^\-\Tutorial
 %Command ===>_zcmd
 ^
-%Node Colors:  `Group   ~OMVS   ]DSList   [DSName
+%Tree Node Colors:  `Group   ~OMVS   ]DSList   [DSName
 ^
 %Primary Commands:
     %Find   ^to find the provided string
-    %REFresh^to refresh the group tree display
-    %X ALL  ^to exclude all group tree nodes
-    %Insert ^to insert a row into the table
-    %Table  ^to switch to ISPF table view
-    %Set    ^to display the settings window
-    %HEL cmd^to display EDSL® help member
     %History^to display change history of EDSL
+    %HEL cmd^to display EDSL® help member
+    %Insert ^to insert a row into the table
+    %REFresh^to refresh the group tree display
+    %QRef   ^to display Command Quick Reference
+    %Set    ^to display the settings window
+    %Table  ^to switch to ISPF table view
     %Version^to display EDSL® version number
+    %X ALL  ^to exclude all group tree nodes
 ^
 %Line Commands:
     %B^  Browse     %M^  Move up       %O^  Open in Dataset List
@@ -1288,7 +1319,7 @@ vput (zscml) profile
     %/^  Popup menu
 )Init
 )Proc
- &zcont = edsdynh
+ &zcont = edslh2
 )End
 >Panel edsdync
 )attr default(%+_)
@@ -1331,7 +1362,7 @@ vput (zscml) profile
  &zwinttl = 'Tree Primary Commands:'
  .zvars = '(zcmd)'
  .cursor = zcmd
- .help = edsdynh
+ .help = edslh1a
  &I = I
  &H = H
  &Q = Q
@@ -1409,25 +1440,28 @@ vput (zscml) profile
   + type(text) intens(low) skip(on)
   ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
   @ type(output) caps(off)
-)Body Window(42,5)
+)Body Window(46,5)
 %Command ===>_z
 +
-%Display view ===>_edsinit+(TABLE or TREE)
-+
+%Display view ===>_edsinit+  (TABLE or TREE)
+%DSN click    ===>_edscmd   +(command or exec)
 )Init
  &zwinttl = 'EDSL Settings:'
  .zvars = '(zcmd)'
  .cursor = edsinit
  .help = edslh
  if (&edsinit = '')
-   &edsinit = 'TABLE'
+   &edsinit = 'TREE'
+ if (&edscmd = '')
+   &edscmd = 'PDS'
 )Proc
 *REXX(*)
  if abbrev('TABLE',edsinit,2) = 1 then edsinit = 'TABLE'
  if abbrev('TREE',edsinit,2)  = 1 then edsinit = 'TREE'
 *ENDREXX
  ver (&edsinit,nb,list,TABLE,TREE)
- vput (edsinit) profile
+ ver (&edscmd,nb)
+ vput (edsinit edscmd) profile
 )End
 >Panel edsqref
 )Attr Default(`[_)
@@ -1570,16 +1604,17 @@ $rsel     +  @z + @edsdisp                                              +
   + type(text) intens(low) skip(on)
   ] type(output) caps(off) pas(on) intens(high) color(white) hilite(uscore)
   @ type(output) caps(off)
-)Body Window(39,11)
+)Body Window(46,12)
 +Enter Selection:_z+
 +
 + Group:@edsdisp
 +
-+]B+Browse            +]R+Review (List)
-+]D+Delete group      +]S+Select (Open)
-+]E+Edit              +]U+Update
-+]I+Insert            +]V+View
-+]O+Open DSList/UDList
++]B+Browse            +]O+Open DSList/UDList
++]D+Delete group      +]R+Review (List)
++]E+Edit              +]S+Select (Open)
++]I+Insert            +]U+Update
++]M+Move up 1 row     +]V+View
++]MD+Move Down 1 row
 +
            +Or%F3+to cancel
 )Init
@@ -1592,6 +1627,8 @@ $rsel     +  @z + @edsdisp                                              +
  &E = E
  &I = I
  &O = O
+ &M = M
+ &MD = MD
  &R = R
  &S = S
  &U = U
@@ -1602,6 +1639,8 @@ $rsel     +  @z + @edsdisp                                              +
  FIELD(D)  VAR(ZCMD) VAL('D')
  FIELD(E)  VAR(ZCMD) VAL('E')
  FIELD(I)  VAR(ZCMD) VAL('I')
+ FIELD(M)  VAR(ZCMD) VAL('M')
+ FIELD(MD) VAR(ZCMD) VAL('MD')
  FIELD(O)  VAR(ZCMD) VAL('O')
  FIELD(R)  VAR(ZCMD) VAL('R')
  FIELD(S)  VAR(ZCMD) VAL('S')
@@ -1676,7 +1715,7 @@ $rsel     +  @z + @edsdisp                                              +
  $ type(input ) hilite(uscore) caps(on) intens(low)
  _ type(input ) hilite(uscore) caps(on) intens(low) intens(low)
 )Body Expand(\\)
-^Tutorial\-\%Enhanced Data Set List^\-\Tutorial
+^Tutorial\-\%Enhanced Data Set List - Table View^\-\Tutorial
 %Command ===>_zcmd
 ^
 %Primary Commands: %Insert ^(abbreviation I) insert a row into the table
@@ -1700,7 +1739,7 @@ $rsel     +  @z + @edsdisp                                              +
 ^\-\Press%Enter^to continue the Tutorial\-\
 )Init
 )Proc
- &zcont = edslh2
+ &zcont = edslh1a
 )End
 >Panel edslh2
 )Attr Default(%+_)
@@ -2254,6 +2293,14 @@ Operands:
  Insert will insert a row into the table
 
  Syntax: Insert
+
+<DSN><ENTER>
+
+If the cursor is placed on a DSN literal and ENTER is pressed (or by a
+MoveCursorEnter mouse action), a "command dsn" (default="pds dsn")
+will be invoked.  The command is defined by the SET dialog.
+
+)X Syntax - None.
 
 <TREE>
  Function:
