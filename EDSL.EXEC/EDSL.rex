@@ -19,7 +19,9 @@
   |                                                            |
   | History:  (most recent on top)                             |
   |    1.48    01/06/21 JK  - Correct empty table with TREE    |
-  |                     LBD - Update table row tutorial        |
+  |                         - Click on EDSL® invokes HEL       |
+  |                         - Expand HEL narrative             |
+  |                     LBD - Update table row popup           |
   |    1.47    12/14/20 JK  - Click on DSN invokes "cmd dsn"   |
   |                     LBD - Make TREE the default view       |
   |                         - Revise Tutorials (combine)       |
@@ -654,7 +656,7 @@ Do_OpenDSL:
   * --------------------------------- */
 do_history:
   hist. = ''
-  hist.1 = 'Extended DSLIST (EDSL) Change History'
+  hist.1 = 'Enhanced DSLIST (EDSL) Change History'
   hist.2 = ' '
   line = 1
   x = sourceline(line)
@@ -911,6 +913,13 @@ Cursor_Pos_DSN:
       'vget (edscmd)'
       if edscmd = '' then
         edscmd = 'PDS'
+      zerrsm = ''
+      zerrlm = 'Invoking 'edscmd'...'
+      zerrhm   = 'edslh1a'
+      zerralrm = 'NO'
+      "control display lock"
+      "display msg(ISRZ002)"
+      Address 'SYSCALL' 'SLEEP (1)'
       if wordpos(word(edscmd,1),'EDIT BROWSE VIEW') > 0 then
         edscmd "dataset("rowdsn")"
       else
@@ -1267,7 +1276,7 @@ Do_Stats:
   ?  TYPE(OUTPUT) PAS(ON)    COLOR(YELLOW) CAPS(OFF) HILITE(USCORE)
   !  TYPE(PS)
 )BODY EXPAND(\\)
-%EDSL®[ver +                 $Tree Display              [rowline
+!EDSL®[ver +                 $Tree Display              [rowline
 %Command ===>¦zcmd                                            %Scroll ===>_Z   +
 +
 @dynarea,dynshad                                                               @
@@ -1282,6 +1291,8 @@ if (&zscml = ' ') &zscml = 'CSR'
 vput (zscml) profile
 &cpos = .CSRPOS
 &cname = .CURSOR
+)PNTS
+FIELD(ZPS00001) VAR(ZCMD) VAL('HEL')
 )END
 >Panel edslh1a
 )Attr Default(%^_)
@@ -1510,7 +1521,7 @@ vput (zscml) profile
 `U               !-[Update (alias C)
 `V               !-[View
 `X               !-]Exclude tree node (toggle)
-`any             !-[(with Dataset only)
+`any             !-[(with Table Dataset only)
 )Init
 &zwinttl = 'EDSL Quick Reference'
 &zup = EDSQREF
@@ -1797,8 +1808,8 @@ $rsel     +  @z + @edsdisp                                              +
 +       no z/OS datasets may be included with it.
 +    6. A Group is limited to 16 dataset names as that is the limit
 +       supported by the ISPF MEMLIST service.
-+
-+
++    7. Non-standard line commands in Table View only work on
++       individual datasets.
 +
 +\-\Press%Enter+to continue the Tutorial\-\
 )Init
@@ -2138,7 +2149,7 @@ $rsel     +  @z + @edsdisp                                              +
 )End
 >Skel edshelp
  Function:
- The EDSL exec invokes the Extended Data Set List dialog.
+ The EDSL exec invokes the Enhanced Data Set List dialog.
 
  The Enhanced Data Set List dialog makes it easy to access an individual
  dataset or OMVS file (Browse/Edit/View), groups of datasets (DSList or
@@ -2147,6 +2158,22 @@ $rsel     +  @z + @edsdisp                                              +
  A group will create or replace a list within the existing ISPF Personal
  Data Set List structure after an Open in DSLIST has been issued for the
  group.  The lists can be accessed in ISPF by the REFOPEND command.
+
+ There are two views available in this dialog.  The Table view is the
+ traditional ISPF table display using the TBDISPL service.  The Tree
+ view utilizes an ISPF dynamic area to display the EDSL table data.
+
+ The Tree view displays the datasets that belong to a group or list.
+ All datasets can be excluded from the display with the X ALL
+ (exclude all) primary command.  Individual datasets can be excluded
+ or included from the display with the X (exclude) line command.
+ The REFRESH command will restore the full Tree display.
+
+ The Tree nodes are colorized based on table data type, which is:
+ Group=blue, OMVS=yellow, DSList=green, DSName=pink, Header=white.
+
+ Use the Table and Tree primary commands to switch between the
+ two display modes.
 
  ---
  Copyleft (C) 2020, Lionel Dyck and Janko Kalinic
@@ -2164,9 +2191,9 @@ $rsel     +  @z + @edsdisp                                              +
    http://www.gnu.org/licenses/
 
  Syntax:
-
    %EDSL
          Open the EDSL list of groups
+
    %EDSL group
          open the specified group using the default selection option
          Type    selection option
@@ -2174,23 +2201,20 @@ $rsel     +  @z + @edsdisp                                              +
          G       Member List
          L       DSList
          O       UDList
+
    %EDSL sel group
          open the group using the sel option (e.g. E)
    %EDSL sel group member (or member mask)
          open the group using the sel option (e.g. E)
 
- Aliases  - none.
- Required - none.
-
 Operands:
   group        - open the specified group using the default selection
                  option.
   sel          - selection option
-                 (E=Edit, B=Browse, V=View, O=DSList/UDList)
+                 (E=Edit, B=Browse, V=View, O=DSList/UDList).
   member       - member name or mask.
 
 <PRIMARY><COMMANDS>
-
     Find    - Find the provided string
     HEL cmd - Display EDSL help for a cmd
     History - Display modification history
@@ -2209,7 +2233,6 @@ Operands:
     /       - Popup selection menu
 
 <LINE><COMMANDS>
-
   B   -  Browse
   D   -  Delete a row
   E   -  Edit
@@ -2228,7 +2251,15 @@ Operands:
   X   -  Exclude tree node (toggle)        (Tree)
   any -  (with Dataset only)               (Table)
 
- Syntax: line command
+<DSN><CLICK>
+If the cursor is placed on a DSN literal and ENTER is pressed (or by a
+MoveCursorEnter mouse action), a progress message will be displayed and
+the DSN click command will be invoked.  The command is defined in the
+SET dialog.
+
+   .---------------------.
+   | Invoking command... |
+   .---------------------.
 
 <FIND>
  Function:
@@ -2283,7 +2314,14 @@ Operands:
  Function:
 
  Set will display the settings pop-up and allow you to change the
- display view (TABLE or TREE).
+ display view (TABLE or TREE) and the click on DSN command.
+
+  .--------------- EDSL Settings: ----------------.
+  | Command ===>                                  |
+  |                                               |
+  | Display view ===> TREE      (TABLE or TREE)   |
+  | DSN click    ===> PDS       (command or exec) |
+  .-----------------------------------------------.
 
  Syntax: Set
 
@@ -2293,14 +2331,6 @@ Operands:
  Insert will insert a row into the table
 
  Syntax: Insert
-
-<DSN><ENTER>
-
-If the cursor is placed on a DSN literal and ENTER is pressed (or by a
-MoveCursorEnter mouse action), a "command dsn" (default="pds dsn")
-will be invoked.  The command is defined by the SET dialog.
-
-)X Syntax - None.
 
 <TREE>
  Function:
@@ -2450,6 +2480,23 @@ ISPList will write out the tree table to the ISPLIST file.
 
  Syntax: HEL command
 
+<NOTES>
+ o  The Group name will be used as the DSList Name when
+    a Group or List is selected.
+ o  When opening as a data set list the list will be added
+    to the Personal Data Set Lists and thus available using
+    DSLIST and REFOPEND.
+ o  Any existing Data Set List with the same name will be
+    replaced.
+ o  The Group name will be truncated to the first word or
+    to the first 8 characters for the Data Set List name.
+ o  Only 1 OMVS File or Directory is allowed in a group and
+    no z/OS datasets may be included with it.
+ o  A Group is limited to 16 dataset names as that is the limit
+    supported by the ISPF MEMLIST service.
+ o  Non-standard line commands in Table View only work on
+    individual datasets.
+
 <MESSAGES>
  Function:
  The MESSAGE HELP entry is provided to document EDSL messages.
@@ -2549,7 +2596,7 @@ ISPList will write out the tree table to the ISPLIST file.
  * ---------------------------------------------------------- *
  * Disclaimer: There is no warranty, either explicit or       *
  * implied with this code. Use it at your own risk as there   *
- * is no recourse from either the author or his employeer.    *
+ * is no recourse from either the author or his employer.     *
  * ---------------------------------------------------------- */
 LoadISPF: Procedure
 
