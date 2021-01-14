@@ -1,5 +1,5 @@
   /* --------------------  rexx procedure  ------------------- */
-  ver = '1.48'
+  ver = '1.49'
   /* Name:      edsl                                           |
   |                                                            |
   | Function:  Enhanced Data Set List ISPF Applications        |
@@ -18,6 +18,7 @@
   |              John Kalinich                                 |
   |                                                            |
   | History:  (most recent on top)                             |
+  |    1.49    01/14/21 JK  - Add SPFX primary command         |
   |    1.48    01/06/21 JK  - Correct empty table with TREE    |
   |                         - Click on EDSL® invokes HEL       |
   |                         - Expand HEL narrative             |
@@ -267,6 +268,10 @@
         call do_options
         parse value '' with options rsel zcmd
       end
+      when abbrev("SPFX",word(zcmd,1),4) = 1 then do
+         zcmd = ''
+         call do_ispfx
+       end
       Otherwise nop
     end
     end
@@ -1008,6 +1013,10 @@ Cursor_Pos_DSN:
     "select pgm(isptutor) parm(edsqref)"
     end
   when abbrev("VERSION",word(zcmd,1),1) = 1 then call do_version
+  when abbrev("SPFX",word(zcmd,1),4) = 1 then do
+    zcmd = ''
+    call do_ispfx
+    end
   otherwise nop
   end
 /* --------------------------------- *
@@ -1249,6 +1258,43 @@ Do_Stats:
     Address ISPExec
     'setmsg msg(isrz002)'
     return
+/* --------------------------------- *
+ | ISPF extract routine              |
+ * --------------------------------- */
+  do_ispfx:
+    mbrs. = ''
+    line = 1260
+    x = sourceline(line)
+    do until substr(x,1,7) = '>Start '
+      line = line + 1
+      x = sourceline(line)
+      iterate
+      end
+    line = line + 1
+    x = sourceline(line)
+    tail = 1
+    do until substr(x,1,7) = '>End */'
+      if substr(x,1,7) = '>Panel ' |,
+         substr(x,1,6) = '>Exec '  |,
+         substr(x,1,6) = '>Skel '  then do
+        parse var x label mbr_name
+        mbrs.tail = './ ADD NAME='left(translate(strip(mbr_name)),8),
+                    '     'label
+        line = line + 1
+        tail = tail + 1
+        x = sourceline(line)
+        iterate
+        end
+      mbrs.tail = substr(x,1,80)
+      line = line + 1
+      tail = tail + 1
+      x = sourceline(line)
+      end
+    mbrs.0 = tail - 1
+    call do_view_stem mbrs
+    drop mbrs.
+    return
+
 /* start of inline elements
 >Start
 >Panel edsdyn
@@ -1504,6 +1550,7 @@ FIELD(ZPS00001) VAR(ZCMD) VAL('HEL')
 !Debug            -]Dump table for debugging
 !Metrics          -]Display EDSTYPE statistics
 !ISPList          -]Write tree table to ISPLIST
+!SPFX             -]Extract LoadISPF elements
 !/                -[Popup selection menu
 `B               !-[Browse
 `D               !-[Delete a row
@@ -2176,7 +2223,7 @@ $rsel     +  @z + @edsdisp                                              +
  two display modes.
 
  ---
- Copyleft (C) 2020, Lionel Dyck and Janko Kalinic
+ Copyleft (C) 2020-2021, Lionel Dyck and Janko Kalinic
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -2230,6 +2277,7 @@ Operands:
     Debug   - Dump table for debugging              (Tree-undoc)
     Metrics - Display EDSTYPE statistics            (Tree-undoc)
     ISPList - Write tree table to ISPLIST           (Tree-undoc)
+    SPFX    - Extract LoadISPF elements
     /       - Popup selection menu
 
 <LINE><COMMANDS>
@@ -2468,9 +2516,21 @@ SET dialog.
 <ISPLIST>
  Function:
 
-ISPList will write out the tree table to the ISPLIST file.
+ ISPList will write out the tree table to the ISPLIST file.
 
  Syntax: ISPList
+
+<SPFX>
+ Function:
+
+ Extract LoadISPF elements (IEBUPDTE format) in preparation for
+ loading into ISPF libraries (panels, execs, and TSO help) and
+ subsequent removal from PGLITE.
+
+ Customization of EDSL will be required to nullify the calls to the
+ LoadISPF and DropISPF routines.
+
+ Syntax: SPFX
 
 <HEL>
  Function:
